@@ -1,6 +1,6 @@
 name: "Aduro2MQTT"
 slug: "aduro2mqtt"
-version: "1.0.3"
+version: "1.0.4"
 description: "Bridge zwischen Aduro Pellet-Ofen (NBE-UDP) und MQTT"
 url: "https://github.com/vothmarkus/Aduro2mqttAddon"
 arch:
@@ -22,7 +22,7 @@ map:
 options:
   mqtt_host: null
   mqtt_port: 1883
-  mqtt_client_id: null
+  mqtt_client_id: "aduro2mqtt"
   mqtt_user: null
   mqtt_password: null
   mqtt_base_topic: "aduro2mqtt"
@@ -32,12 +32,12 @@ options:
   aduro_pin: null
   aduro_poll_interval: 30
 
-  log_level: "WARNING"
+  log_level: "INFO"
 
 schema:
-  mqtt_host: "str?"
-  mqtt_port: "int?"
-  mqtt_client_id: "str?"
+  mqtt_host: str
+  mqtt_port: int
+  mqtt_client_id: str
   mqtt_user: "str?"
   mqtt_password: "password?"
   mqtt_base_topic: str

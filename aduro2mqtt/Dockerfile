@@ -11,7 +11,8 @@ WORKDIR /opt
 RUN git clone ${UPSTREAM_REPO} aduro2mqtt
 WORKDIR /opt/aduro2mqtt
 
-RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+COPY constraints.txt /opt/constraints.txt
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools &&     if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt -c /opt/constraints.txt; fi
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
