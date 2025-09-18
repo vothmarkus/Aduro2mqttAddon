@@ -38,11 +38,10 @@ export LOG_LEVEL="${LOG_LEVEL:-WARNING}"
 bashio::log.info "Starte aduro2mqtt: MQTT @ ${MQTT_HOST}:${MQTT_PORT}, Aduro @ ${ADURO_HOST}, Poll=${ADURO_POLL_INTERVAL}s"
 
 cd /opt/aduro2mqtt
-# Try the typical entrypoint
 if [[ -f "main.py" ]]; then
-  exec python3 main.py
+  exec /opt/venv/bin/python3 main.py
 elif [[ -f "aduro2mqtt.py" ]]; then
-  exec python3 aduro2mqtt.py
+  exec /opt/venv/bin/python3 aduro2mqtt.py
 else
   bashio::log.fatal "Konnte keinen Startpunkt (main.py/aduro2mqtt.py) im Upstream-Repo finden."
   ls -la

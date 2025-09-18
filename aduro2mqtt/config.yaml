@@ -1,6 +1,6 @@
 name: "Aduro2MQTT"
 slug: "aduro2mqtt"
-version: "1.0.0"
+version: "1.0.1"
 description: "Bridge zwischen Aduro Pellet-Ofen (NBE-UDP) und MQTT"
 url: "https://github.com/vothmarkus/Aduro2mqttAddon"
 arch:
