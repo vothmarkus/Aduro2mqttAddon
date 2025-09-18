@@ -1,6 +1,10 @@
 #!/usr/bin/with-contenv bashio
 set -euo pipefail
 
+# Suppress ResourceWarnings for unclosed sockets
+export PYTHONWARNINGS="ignore::ResourceWarning"
+export PYTHONUNBUFFERED=1
+
 MQTT_HOST="$(bashio::config 'mqtt_host')"
 MQTT_PORT="$(bashio::config 'mqtt_port')"
 MQTT_CLIENT_ID="$(bashio::config 'mqtt_client_id')"

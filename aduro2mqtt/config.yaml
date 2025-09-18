@@ -1,6 +1,6 @@
 name: "Aduro2MQTT"
 slug: "aduro2mqtt"
-version: "1.0.4"
+version: "1.0.5"
 description: "Bridge zwischen Aduro Pellet-Ofen (NBE-UDP) und MQTT"
 url: "https://github.com/vothmarkus/Aduro2mqttAddon"
 arch:
@@ -13,14 +13,14 @@ startup: application
 init: false
 stage: stable
 ingress: false
-host_network: false
+host_network: true
 
 map:
   - type: addon_config
   - type: share
 
 options:
-  mqtt_host: null
+  mqtt_host: core-mosquitto
   mqtt_port: 1883
   mqtt_client_id: "aduro2mqtt"
   mqtt_user: null
