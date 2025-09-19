@@ -1,99 +1,64 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/with-contenv bash
 set -euo pipefail
 
-export PYTHONWARNINGS="ignore::ResourceWarning"
-export PYTHONUNBUFFERED=1
+OPT="/data/options.json"
 
-MQTT_HOST="$(bashio::config 'mqtt_host')"
-MQTT_PORT="$(bashio::config 'mqtt_port')"
-MQTT_CLIENT_ID="$(bashio::config 'mqtt_client_id')"
-MQTT_USER="$(bashio::config 'mqtt_user')"
-MQTT_PASSWORD="$(bashio::config 'mqtt_password')"
-MQTT_BASE_TOPIC="$(bashio::config 'mqtt_base_topic')"
+val() { jq -er "$1" "$OPT"; }
+val_or() { jq -er "$1 // $2" "$OPT"; }
 
-ADURO_HOST="$(bashio::config 'aduro_host')"
-ADURO_SERIAL="$(bashio::config 'aduro_serial')"
-ADURO_PIN="$(bashio::config 'aduro_pin')"
-ADURO_POLL_INTERVAL="$(bashio::config 'aduro_poll_interval')"
+MQTT_HOST=$(val '.mqtt_host')
+MQTT_PORT=$(val_or '.mqtt_port' 1883)
+MQTT_CLIENT_ID=$(val '.mqtt_client_id')
+MQTT_USER=$(jq -er '.mqtt_user // empty' "$OPT")
+MQTT_PASSWORD=$(jq -er '.mqtt_password // empty' "$OPT")
+MQTT_BASE=$(val_or '.mqtt_base_topic' '"aduro2mqtt"')
 
-ENABLE_DISCOVERY="$(bashio::config 'enable_discovery')"
-DISCOVERY_PREFIX="$(bashio::config 'discovery_prefix')"
-DEVICE_NAME="$(bashio::config 'device_name')"
-DEVICE_ID="$(bashio::config 'device_id')"
-DISCOVERY_DEBUG="$(bashio::config 'discovery_debug')"
-DISCOVERY_LEARN_SECONDS="$(bashio::config 'discovery_learn_seconds')"
-DISCOVERY_CLEANUP="$(bashio::config 'discovery_cleanup')"
+ADURO_HOST=$(val '.aduro_host')
+ADURO_SERIAL=$(val '.aduro_serial')
+ADURO_PIN=$(val '.aduro_pin')
+ADURO_POLL=$(val_or '.aduro_poll_interval' 30)
 
-DISCOVERY_TOPICS_DEFAULT="status,operating,advanced,settings/+,consumption/#"
-if bashio::config.has_value 'discovery_topics'; then
-  DISCOVERY_TOPICS="$(/opt/venv/bin/python3 - <<'PY'
-import json
-j=json.load(open('/data/options.json'))
-arr=j.get('discovery_topics') or []
-print(','.join(arr) if arr else '')
-PY
-)"
-  if [ -z "$DISCOVERY_TOPICS" ]; then
-    DISCOVERY_TOPICS="${DISCOVERY_TOPICS_DEFAULT}"
-  fi
-else
-  DISCOVERY_TOPICS="${DISCOVERY_TOPICS_DEFAULT}"
-fi
+LOG_LEVEL=$(val_or '.log_level' '"WARNING"')
 
-LOG_LEVEL="$(bashio::config 'log_level')"
+DISCOVERY=$(val_or '.discovery' true)
+DISCOVERY_PREFIX=$(val_or '.discovery_prefix' '"homeassistant"')
+DISCOVERY_DEVICE_NAME=$(val_or '.discovery_device_name' '"Aduro H2"')
+DISCOVERY_DEVICE_ID=$(val_or '.discovery_device_id' '"aduro_h2"')
+DISCOVERY_CLEANUP=$(val_or '.discovery_cleanup' false)
+ENABLE_AUTO_LEARN=$(val_or '.enable_auto_learn' false)
+DISCOVERY_LEARN_SECONDS=$(val_or '.discovery_learn_seconds' 8)
+DISCOVERY_TOPICS=$(val_or '.discovery_topics' '"status,operating,advanced,settings/+,consumption/#"')
 
-# Autodetect MQTT service if values missing
-if { [[ -z "${MQTT_HOST}" || "${MQTT_HOST}" == "null" ]] || [[ -z "${MQTT_PORT}" || "${MQTT_PORT}" == "null" ]] || [[ -z "${MQTT_USER}" || "${MQTT_USER}" == "null" ]] || [[ -z "${MQTT_PASSWORD}" || "${MQTT_PASSWORD}" == "null" ]] ; }    && bashio::services.available "mqtt"; then
-  bashio::log.info "Erkenne MQTT-Service von HA (auto) ..."
-  MQTT_HOST="${MQTT_HOST:-$(bashio::services 'mqtt' 'host')}"
-  MQTT_PORT="${MQTT_PORT:-$(bashio::services 'mqtt' 'port')}"
-  MQTT_USER="${MQTT_USER:-$(bashio::services 'mqtt' 'username')}"
-  MQTT_PASSWORD="${MQTT_PASSWORD:-$(bashio::services 'mqtt' 'password')}"
-fi
-
-if [[ -z "${MQTT_HOST}" || -z "${ADURO_HOST}" || -z "${ADURO_SERIAL}" || -z "${ADURO_PIN}" ]]; then
-  bashio::log.fatal "Fehlende Optionen: mqtt_host/aduro_host/aduro_serial/aduro_pin."
-  exit 1
-fi
+echo "[INFO] MQTT: host=${MQTT_HOST}, port=${MQTT_PORT}, user=${MQTT_USER:+<set>}"
+echo "[INFO] Discovery: ${DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DISCOVERY_DEVICE_NAME}/${DISCOVERY_DEVICE_ID}, learn=${DISCOVERY_LEARN_SECONDS}s, topics=${DISCOVERY_TOPICS}, cleanup=${DISCOVERY_CLEANUP})"
+echo "[INFO] Starte aduro2mqtt: MQTT @ ${MQTT_HOST}:${MQTT_PORT}, Aduro @ ${ADURO_HOST}, Poll=${ADURO_POLL}s"
 
 export MQTT_BROKER_HOST="${MQTT_HOST}"
-export MQTT_BROKER_PORT="${MQTT_PORT:-1883}"
-export MQTT_CLIENT_ID="${MQTT_CLIENT_ID:-aduro2mqtt}"
-[[ -n "${MQTT_USER:-}" && "${MQTT_USER}" != "null" ]] && export MQTT_USER="${MQTT_USER}"
-[[ -n "${MQTT_PASSWORD:-}" && "${MQTT_PASSWORD}" != "null" ]] && export MQTT_PASSWORD="${MQTT_PASSWORD}"
-export MQTT_BASE_TOPIC="${MQTT_BASE_TOPIC:-aduro2mqtt}"
+export MQTT_BROKER_PORT="${MQTT_PORT}"
+export MQTT_USER="${MQTT_USER}"
+export MQTT_PASSWORD="${MQTT_PASSWORD}"
+export MQTT_CLIENT_ID="${MQTT_CLIENT_ID}"
+export MQTT_BASE_TOPIC="${MQTT_BASE}"
 
 export ADURO_HOST="${ADURO_HOST}"
 export ADURO_SERIAL="${ADURO_SERIAL}"
 export ADURO_PIN="${ADURO_PIN}"
-export ADURO_POLL_INTERVAL="${ADURO_POLL_INTERVAL:-30}"
+export POLL_INTERVAL="${ADURO_POLL}"
 
-export DISCOVERY_PREFIX="${DISCOVERY_PREFIX:-homeassistant}"
-export DEVICE_NAME="${DEVICE_NAME:-Aduro H2}"
-export DEVICE_ID="${DEVICE_ID:-aduro_h2}"
-export DISCOVERY_DEBUG="${DISCOVERY_DEBUG:-false}"
-export DISCOVERY_LEARN_SECONDS="${DISCOVERY_LEARN_SECONDS:-8}"
-export DISCOVERY_TOPICS="${DISCOVERY_TOPICS}"
-export DISCOVERY_CLEANUP="${DISCOVERY_CLEANUP}"
+export LOGLEVEL="${LOG_LEVEL}"
 
-export LOG_LEVEL="${LOG_LEVEL:-INFO}"
-
-bashio::log.info "MQTT: host=${MQTT_BROKER_HOST}, port=${MQTT_BROKER_PORT}, user=${MQTT_USER:-<none>}"
-bashio::log.info "Discovery: ${ENABLE_DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID}, learn=${DISCOVERY_LEARN_SECONDS}s, topics=${DISCOVERY_TOPICS}, cleanup=${DISCOVERY_CLEANUP})"
-
-if [[ "${ENABLE_DISCOVERY}" == "true" ]]; then
-  /opt/venv/bin/python3 /opt/discovery.py &
+# Discovery (optional)
+if [ "${DISCOVERY}" = "true" ]; then
+    export DISCOVERY_PREFIX="${DISCOVERY_PREFIX}"
+    export DEVICE_NAME="${DISCOVERY_DEVICE_NAME}"
+    export DEVICE_ID="${DISCOVERY_DEVICE_ID}"
+    export DISCOVERY_CLEANUP="${DISCOVERY_CLEANUP}"
+    export ENABLE_AUTO_LEARN="${ENABLE_AUTO_LEARN}"
+    export DISCOVERY_LEARN_SECONDS="${DISCOVERY_LEARN_SECONDS}"
+    export DISCOVERY_TOPICS="${DISCOVERY_TOPICS}"
+    python3 /opt/discovery.py || echo "[WARN] discovery failed (continuing)"
 fi
 
-bashio::log.info "Starte aduro2mqtt: MQTT @ ${MQTT_BROKER_HOST}:${MQTT_BROKER_PORT}, Aduro @ ${ADURO_HOST}, Poll=${ADURO_POLL_INTERVAL}s"
-
+# Run upstream app
 cd /opt/aduro2mqtt
-if [[ -f "main.py" ]]; then
-  exec /opt/venv/bin/python3 main.py
-elif [[ -f "aduro2mqtt.py" ]]; then
-  exec /opt/venv/bin/python3 aduro2mqtt.py
-else
-  bashio::log.fatal "Konnte keinen Startpunkt (main.py/aduro2mqtt.py) im Upstream-Repo finden."
-  ls -la
-  exit 1
-fi
+exec python3 /opt/aduro2mqtt/main.py

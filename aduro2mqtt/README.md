@@ -1,11 +1,5 @@
-# Aduro2MQTT (Home Assistant Add-on)
+# Aduro2MQTT Home Assistant Add-on
 
-Dieses Add-on verpackt das Upstream-Projekt **aduro2mqtt** in ein Home-Assistant-Add-on.
-Es verbindet einen Aduro/NBE-Ofen via UDP mit MQTT.
-
-## Konfiguration
-Siehe `config.yaml` (Options & Schema). Logs können per `log_level: DEBUG` ausführlicher gemacht werden.
-
-## Build-Hinweise
-- Venv (`/opt/venv`) wird genutzt, um PEP 668 Konflikte zu vermeiden.
-- `ARG BUILD_FROM=ghcr.io/home-assistant/{arch}-base:latest` ist für alle Architekturen korrekt.
+- Startscript: `run.sh` (wird von s6 über `/etc/services.d/aduro2mqtt/run` aufgerufen)
+- Discovery: `discovery.py` (statisch + optional Auto-Learn)
+- Python-Pins: `constraints.txt`

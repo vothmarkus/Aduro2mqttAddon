@@ -1,78 +1,57 @@
-name: "Aduro2MQTT"
-slug: "aduro2mqtt"
-version: "1.2.3"
-description: "Aduro Pellet-Ofen → MQTT (+ Home Assistant MQTT Discovery mit Auto-Lernen & Cleanup)"
-url: "https://github.com/vothmarkus/Aduro2mqttAddon"
+name: Aduro2MQTT
+slug: aduro2mqtt
+version: 1.2.8
+description: "Aduro H2 → MQTT bridge with Home Assistant Discovery (static sensors + optional auto-learn)"
+url: https://github.com/vothmarkus/Aduro2mqttAddon
 arch:
-  - aarch64
   - amd64
+  - aarch64
   - armv7
-  - armhf
-  - i386
 startup: application
+boot: auto
 init: false
-stage: stable
-ingress: false
-host_network: true
-
-services:
-  - mqtt:want
-
-map:
-  - type: addon_config
-  - type: share
-
+host_network: false
+map: []
 options:
   mqtt_host: core-mosquitto
   mqtt_port: 1883
-  mqtt_client_id: "aduro2mqtt"
-  mqtt_user: null
-  mqtt_password: null
-  mqtt_base_topic: "aduro2mqtt"
+  mqtt_client_id: aduro2mqtt
+  mqtt_user: ""
+  mqtt_password: ""
+  mqtt_base_topic: aduro2mqtt
 
-  aduro_host: null
-  aduro_serial: null
-  aduro_pin: null
+  aduro_host: 192.168.177.74
+  aduro_serial: ""
+  aduro_pin: ""
   aduro_poll_interval: 30
 
-  enable_discovery: true
-  discovery_prefix: "homeassistant"
-  device_name: "Aduro H2"
-  device_id: "aduro_h2"
-  discovery_debug: false
-  discovery_learn_seconds: 8
+  log_level: WARNING
+
+  discovery: true
+  discovery_prefix: homeassistant
+  discovery_device_name: "Aduro H2"
+  discovery_device_id: "aduro_h2"
   discovery_cleanup: true
-
-  discovery_topics:
-    - "status"
-    - "operating"
-    - "advanced"
-    - "settings/+"
-    - "consumption/#"
-
-  log_level: "INFO"
-
+  enable_auto_learn: false
+  discovery_learn_seconds: 8
+  discovery_topics: "status,operating,advanced,settings/+,consumption/#"
 schema:
-  mqtt_host: "str?"
-  mqtt_port: "int?"
-  mqtt_client_id: "str?"
-  mqtt_user: "str?"
-  mqtt_password: "password?"
+  mqtt_host: str
+  mqtt_port: int
+  mqtt_client_id: str
+  mqtt_user: str?
+  mqtt_password: str?
   mqtt_base_topic: str
-
   aduro_host: str
   aduro_serial: str
   aduro_pin: str
   aduro_poll_interval: int
-
-  enable_discovery: bool
-  discovery_prefix: str
-  device_name: str
-  device_id: str
-  discovery_debug: bool
-  discovery_learn_seconds: int
-  discovery_cleanup: bool
-  discovery_topics:
-    - str
-
   log_level: list(WARNING|INFO|DEBUG)
+  discovery: bool
+  discovery_prefix: str
+  discovery_device_name: str
+  discovery_device_id: str
+  discovery_cleanup: bool
+  enable_auto_learn: bool
+  discovery_learn_seconds: int
+  discovery_topics: str

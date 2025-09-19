@@ -108,7 +108,7 @@ def static_discovery(client):
         ["10","50","100"]
     )
 
-    # Static sensors (curated)
+    # Static sensors
     S = f"{BASE}/status"
     C = f"{BASE}/consumption/counter"
 
@@ -129,10 +129,6 @@ def static_discovery(client):
 
     for uid, topic, tpl, unit, devc, statec, icon in sensors:
         make_sensor(client, uid, f"{DEVICE_NAME} {uid.replace('_',' ').title()}", topic, tpl, unit, devc, statec, icon)
-
-    # Optional: RSSI/Signal aus HA, wenn vorhanden
-    make_sensor(client, "wifi_rssi",   "Aduro H2 Rssi",   "homeassistant/wifi", "{{ value_json.rssi   | int }}", "dBm", None, "measurement", None)
-    make_sensor(client, "wifi_signal", "Aduro H2 Signal", "homeassistant/wifi", "{{ value_json.signal | int }}", None,   None, "measurement", None)
 
 def auto_learn(client):
     seen = set()
@@ -158,7 +154,7 @@ def auto_learn(client):
                     make_sensor(client, uid, f"{DEVICE_NAME} {topic.split('/')[-1].title()} {idx}", topic, f"{{{{ value_json[{idx}] }}}}")
     client.on_message = on_message
     for t in [f"{BASE}/{t0}" for t0 in TOPICS]:
-        log(f"subscribe {t}")
+        print(f"[discovery] subscribe {t}")
         client.subscribe(t, qos=0)
     start = time.time()
     while time.time() - start < LEARN_SECS:
@@ -169,11 +165,13 @@ def main():
     if USER:
         client.username_pw_set(USER, PWD)
     try:
-        log(f"connect mqtt host={HOST} port={PORT} user={'<set>' if USER else '<none>'}")
+        print(f"[discovery] connect mqtt host={HOST} port={PORT} user={'<set>' if USER else '<none>'}")
         client.connect(HOST, PORT, keepalive=30)
     except Exception as e:
-        log(f"MQTT connect failed: {e}")
+        print(f"[discovery] MQTT connect failed: {e}")
         return
+
+    print(f"[discovery] discovery_prefix={DISC_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE}")
 
     if DO_CLEANUP:
         cleanup_previous(client)
@@ -184,7 +182,7 @@ def main():
         auto_learn(client)
 
     client.disconnect()
-    log("done")
+    print("[discovery] done")
 
 if __name__ == "__main__":
     main()
