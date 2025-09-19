@@ -35,6 +35,13 @@ export LOG_LEVEL
 export DISCOVERY_PREFIX BASE_TOPIC="${MQTT_BASE_TOPIC}" DEVICE_NAME DEVICE_ID DISCOVERY_EXCLUDE
 export PYTHONWARNINGS="ignore::ResourceWarning"
 
+# Map to upstream expected env names
+export MQTT_BROKER_HOST="${MQTT_HOST}"
+export MQTT_BROKER_PORT="${MQTT_PORT}"
+export MQTT_BROKER_USERNAME="${MQTT_USER}"
+export MQTT_BROKER_PASSWORD="${MQTT_PASSWORD}"
+export MQTT_BROKER_CLIENT_ID="${MQTT_CLIENT_ID}"
+
 if [ "${DISCOVERY_ENABLE}" = "true" ] || [ "${DISCOVERY_ENABLE}" = "True" ]; then
   /opt/venv/bin/python /opt/discovery.py || echo "[WARN] Discovery failed (continuing)"
 fi
