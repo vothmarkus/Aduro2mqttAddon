@@ -58,7 +58,6 @@ def main():
         log(f"MQTT connect failed: {e}")
         return
 
-    # 1) Statische Entities, die wir sicher kennen (Switch + Select)
     switch_payload = {
         "name": f"{DEVICE_NAME} toggle",
         "uniq_id": f"{DEVICE_ID}_toggle",
@@ -82,7 +81,6 @@ def main():
     }
     pub(client, f"{DISC_PREFIX}/select/{DEVICE_ID}_fixed_power/config", select_payload)
 
-    # 2) Dynamisches Lernen numerischer Felder
     seen = set()
 
     def on_message(_c, _u, msg):
@@ -102,7 +100,6 @@ def main():
                     nice_name = f"{DEVICE_NAME} {k.replace('_',' ').title()}"
                     make_sensor(client, uid, nice_name, topic, f"{{{{ value_json.{k} }}}}", unit, dev_class, state_class)
         elif isinstance(data, list):
-            # For consumption arrays or similar
             for idx, v in enumerate(data):
                 if isinstance(v, (int, float)):
                     uid = slug(f"{topic.replace('/', '_')}_{idx}")
@@ -111,7 +108,6 @@ def main():
                     make_sensor(client, uid, nice_name, topic, f"{{{{ value_json[{idx}] }}}}", unit, dev_class, state_class)
 
     client.on_message = on_message
-    # Subscribe to configured discovery topics
     for t in TOPICS:
         t_full = f"{BASE}/{t}"
         log(f"subscribe {t_full}")
@@ -121,7 +117,6 @@ def main():
     while time.time() - start < LEARN_SECS:
         client.loop(timeout=1.0)
 
-    # Publish a few well-known basics in case they didn't show during learn window
     basics = [
         ("room_temp",  f"{BASE}/status", "{{ value_json.boiler_temp }}", "°C", "temperature", "measurement"),
         ("shaft_temp", f"{BASE}/status", "{{ value_json.shaft_temp }}", "°C", "temperature", "measurement"),
