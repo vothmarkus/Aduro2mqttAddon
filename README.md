@@ -1,4 +1,5 @@
 # Aduro2mqttAddon
+<img src="aduro2mqtt/logo.svg" alt="Projektlogo" width="150"/>
 
 - 🇬🇧 **English**: [README.en.md](README.en.md)
 
