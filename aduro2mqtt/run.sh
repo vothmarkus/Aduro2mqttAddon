@@ -60,7 +60,6 @@ export LOG_LEVEL="${LOG_LEVEL:-INFO}"
 bashio::log.info "MQTT: host=${MQTT_BROKER_HOST}, port=${MQTT_BROKER_PORT}, user=${MQTT_USER:-<none>}"
 bashio::log.info "Discovery: ${ENABLE_DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID})"
 
-# Start discovery helper in background
 if [[ "${ENABLE_DISCOVERY}" == "true" ]]; then
   /opt/venv/bin/python3 /opt/discovery.py &
 fi

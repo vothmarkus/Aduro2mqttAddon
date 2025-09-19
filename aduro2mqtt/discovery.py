@@ -25,7 +25,8 @@ def main():
         log(f"connect mqtt host={HOST} port={PORT} user={'<set>' if USER else '<none>'}")
         log(f"discovery_prefix={DISC_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE}")
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"{DEVICE_ID}_disc")
+    # paho-mqtt <2.0 API
+    client = mqtt.Client(client_id=f"{DEVICE_ID}_disc", protocol=mqtt.MQTTv311)
     if USER:
         client.username_pw_set(USER, PWD)
 
@@ -81,7 +82,6 @@ def main():
     }
     pub(client, f"{DISC_PREFIX}/select/{DEVICE_ID}_fixed_power/config", select_payload)
 
-    # flush a bit
     for _ in range(3):
         client.loop(timeout=1.0)
         time.sleep(0.2)
