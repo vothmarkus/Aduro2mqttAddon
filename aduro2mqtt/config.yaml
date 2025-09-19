@@ -1,7 +1,7 @@
 name: "Aduro2MQTT"
 slug: "aduro2mqtt"
-version: "1.1.2"
-description: "Aduro Pellet-Ofen → MQTT (+ Home Assistant MQTT Discovery)"
+version: "1.2.0"
+description: "Aduro Pellet-Ofen → MQTT (+ Home Assistant MQTT Discovery mit Auto-Lernen)"
 url: "https://github.com/vothmarkus/Aduro2mqttAddon"
 arch:
   - aarch64
@@ -39,7 +39,16 @@ options:
   discovery_prefix: "homeassistant"
   device_name: "Aduro H2"
   device_id: "aduro_h2"
-  discovery_debug: true
+  discovery_debug: false
+  discovery_learn_seconds: 8
+
+  # Welche Topics für Auto-Lernen abonniert werden sollen
+  discovery_topics:
+    - "status"
+    - "operating"
+    - "advanced"
+    - "settings/+"
+    - "consumption/#"
 
   log_level: "INFO"
 
@@ -61,5 +70,8 @@ schema:
   device_name: str
   device_id: str
   discovery_debug: bool
+  discovery_learn_seconds: int
+  discovery_topics:
+    - str
 
   log_level: list(WARNING|INFO|DEBUG)

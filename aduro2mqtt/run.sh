@@ -21,6 +21,10 @@ DISCOVERY_PREFIX="$(bashio::config 'discovery_prefix')"
 DEVICE_NAME="$(bashio::config 'device_name')"
 DEVICE_ID="$(bashio::config 'device_id')"
 DISCOVERY_DEBUG="$(bashio::config 'discovery_debug')"
+DISCOVERY_LEARN_SECONDS="$(bashio::config 'discovery_learn_seconds')"
+
+# Join list to comma string for env
+DISCOVERY_TOPICS="$(bashio::jq -r '.discovery_topics | join(",")' /data/options.json)"
 
 LOG_LEVEL="$(bashio::config 'log_level')"
 
@@ -54,11 +58,13 @@ export DISCOVERY_PREFIX="${DISCOVERY_PREFIX:-homeassistant}"
 export DEVICE_NAME="${DEVICE_NAME:-Aduro H2}"
 export DEVICE_ID="${DEVICE_ID:-aduro_h2}"
 export DISCOVERY_DEBUG="${DISCOVERY_DEBUG:-false}"
+export DISCOVERY_LEARN_SECONDS="${DISCOVERY_LEARN_SECONDS:-8}"
+export DISCOVERY_TOPICS="${DISCOVERY_TOPICS}"
 
 export LOG_LEVEL="${LOG_LEVEL:-INFO}"
 
 bashio::log.info "MQTT: host=${MQTT_BROKER_HOST}, port=${MQTT_BROKER_PORT}, user=${MQTT_USER:-<none>}"
-bashio::log.info "Discovery: ${ENABLE_DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID})"
+bashio::log.info "Discovery: ${ENABLE_DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID}, learn=${DISCOVERY_LEARN_SECONDS}s, topics=${DISCOVERY_TOPICS})"
 
 if [[ "${ENABLE_DISCOVERY}" == "true" ]]; then
   /opt/venv/bin/python3 /opt/discovery.py &
