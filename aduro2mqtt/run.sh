@@ -1,64 +1,55 @@
 #!/usr/bin/with-contenv bash
 set -euo pipefail
 
-OPT="/data/options.json"
+OPTIONS_FILE="/data/options.json"
+jqr() { jq -r "${1}" "${OPTIONS_FILE}" 2>/dev/null; }
 
-val() { jq -er "$1" "$OPT"; }
-val_or() { jq -er "$1 // $2" "$OPT"; }
+MQTT_HOST=$(jqr '.mqtt_host // "core-mosquitto"')
+MQTT_PORT=$(jqr '.mqtt_port // 1883')
+MQTT_CLIENT_ID=$(jqr '.mqtt_client_id // "aduro2mqtt"')
+MQTT_USER=$(jqr '.mqtt_user // ""')
+MQTT_PASSWORD=$(jqr '.mqtt_password // ""')
+MQTT_BASE_TOPIC=$(jqr '.mqtt_base_topic // "aduro2mqtt"')
 
-MQTT_HOST=$(val '.mqtt_host')
-MQTT_PORT=$(val_or '.mqtt_port' 1883)
-MQTT_CLIENT_ID=$(val '.mqtt_client_id')
-MQTT_USER=$(jq -er '.mqtt_user // empty' "$OPT")
-MQTT_PASSWORD=$(jq -er '.mqtt_password // empty' "$OPT")
-MQTT_BASE=$(val_or '.mqtt_base_topic' '"aduro2mqtt"')
+ADURO_HOST=$(jqr '.aduro_host // ""')
+ADURO_SERIAL=$(jqr '.aduro_serial // ""')
+ADURO_PIN=$(jqr '.aduro_pin // ""')
+ADURO_POLL_INTERVAL=$(jqr '.aduro_poll_interval // 30')
 
-ADURO_HOST=$(val '.aduro_host')
-ADURO_SERIAL=$(val '.aduro_serial')
-ADURO_PIN=$(val '.aduro_pin')
-ADURO_POLL=$(val_or '.aduro_poll_interval' 30)
+DISCOVERY_ENABLE=$(jqr '.discovery_enable // true')
+DISCOVERY_PREFIX=$(jqr '.discovery_prefix // "homeassistant"')
+DEVICE_NAME=$(jqr '.device_name // "Aduro H2"')
+DEVICE_ID=$(jqr '.device_id // "aduro_h2"')
+DISCOVERY_EXCLUDE=$(jq -r '[.discovery_exclude[]?] | join(",")' "${OPTIONS_FILE}" 2>/dev/null || echo "boiler_pump_state,return_temp")
+[ -z "${DISCOVERY_EXCLUDE}" ] && DISCOVERY_EXCLUDE="boiler_pump_state,return_temp"
 
-LOG_LEVEL=$(val_or '.log_level' '"WARNING"')
+LOG_LEVEL=$(jqr '.log_level // "INFO"')
 
-DISCOVERY=$(val_or '.discovery' true)
-DISCOVERY_PREFIX=$(val_or '.discovery_prefix' '"homeassistant"')
-DISCOVERY_DEVICE_NAME=$(val_or '.discovery_device_name' '"Aduro H2"')
-DISCOVERY_DEVICE_ID=$(val_or '.discovery_device_id' '"aduro_h2"')
-DISCOVERY_CLEANUP=$(val_or '.discovery_cleanup' false)
-ENABLE_AUTO_LEARN=$(val_or '.enable_auto_learn' false)
-DISCOVERY_LEARN_SECONDS=$(val_or '.discovery_learn_seconds' 8)
-DISCOVERY_TOPICS=$(val_or '.discovery_topics' '"status,operating,advanced,settings/+,consumption/#"')
+echo "[INFO] MQTT: host=${MQTT_HOST}, port=${MQTT_PORT}, user=${MQTT_USER:-<none>}"
+echo "[INFO] Discovery: ${DISCOVERY_ENABLE} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID}, exclude=${DISCOVERY_EXCLUDE})"
+echo "[INFO] Starte aduro2mqtt: MQTT @ ${MQTT_HOST}:${MQTT_PORT}, Aduro @ ${ADURO_HOST}, Poll=${ADURO_POLL_INTERVAL}s"
 
-echo "[INFO] MQTT: host=${MQTT_HOST}, port=${MQTT_PORT}, user=${MQTT_USER:+<set>}"
-echo "[INFO] Discovery: ${DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DISCOVERY_DEVICE_NAME}/${DISCOVERY_DEVICE_ID}, learn=${DISCOVERY_LEARN_SECONDS}s, topics=${DISCOVERY_TOPICS}, cleanup=${DISCOVERY_CLEANUP})"
-echo "[INFO] Starte aduro2mqtt: MQTT @ ${MQTT_HOST}:${MQTT_PORT}, Aduro @ ${ADURO_HOST}, Poll=${ADURO_POLL}s"
+export MQTT_HOST MQTT_PORT MQTT_USER MQTT_PASSWORD MQTT_BASE_TOPIC MQTT_CLIENT_ID
+export ADURO_HOST ADURO_SERIAL ADURO_PIN ADURO_POLL_INTERVAL
+export LOG_LEVEL
+export DISCOVERY_PREFIX BASE_TOPIC="${MQTT_BASE_TOPIC}" DEVICE_NAME DEVICE_ID DISCOVERY_EXCLUDE
+export PYTHONWARNINGS="ignore::ResourceWarning"
 
-export MQTT_BROKER_HOST="${MQTT_HOST}"
-export MQTT_BROKER_PORT="${MQTT_PORT}"
-export MQTT_USER="${MQTT_USER}"
-export MQTT_PASSWORD="${MQTT_PASSWORD}"
-export MQTT_CLIENT_ID="${MQTT_CLIENT_ID}"
-export MQTT_BASE_TOPIC="${MQTT_BASE}"
-
-export ADURO_HOST="${ADURO_HOST}"
-export ADURO_SERIAL="${ADURO_SERIAL}"
-export ADURO_PIN="${ADURO_PIN}"
-export POLL_INTERVAL="${ADURO_POLL}"
-
-export LOGLEVEL="${LOG_LEVEL}"
-
-# Discovery (optional)
-if [ "${DISCOVERY}" = "true" ]; then
-    export DISCOVERY_PREFIX="${DISCOVERY_PREFIX}"
-    export DEVICE_NAME="${DISCOVERY_DEVICE_NAME}"
-    export DEVICE_ID="${DISCOVERY_DEVICE_ID}"
-    export DISCOVERY_CLEANUP="${DISCOVERY_CLEANUP}"
-    export ENABLE_AUTO_LEARN="${ENABLE_AUTO_LEARN}"
-    export DISCOVERY_LEARN_SECONDS="${DISCOVERY_LEARN_SECONDS}"
-    export DISCOVERY_TOPICS="${DISCOVERY_TOPICS}"
-    python3 /opt/discovery.py || echo "[WARN] discovery failed (continuing)"
+if [ "${DISCOVERY_ENABLE}" = "true" ] || [ "${DISCOVERY_ENABLE}" = "True" ]; then
+  /opt/venv/bin/python /opt/discovery.py || echo "[WARN] Discovery failed (continuing)"
 fi
 
-# Run upstream app
-cd /opt/aduro2mqtt
-exec python3 /opt/aduro2mqtt/main.py
+BACKOFF=5
+MAX_BACKOFF=60
+
+while true; do
+  /opt/venv/bin/python /opt/aduro2mqtt/main.py || true
+  RC=$?
+  if [ $RC -eq 0 ]; then
+    echo "[INFO] aduro2mqtt exited cleanly."
+    exit 0
+  fi
+  echo "[ERROR] aduro2mqtt exited with code ${RC}. Restart in ${BACKOFF}s..."
+  sleep "${BACKOFF}"
+  BACKOFF=$(( BACKOFF < MAX_BACKOFF ? BACKOFF * 2 : MAX_BACKOFF ))
+done

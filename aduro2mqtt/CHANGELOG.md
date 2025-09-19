@@ -1,6 +1,7 @@
 # Changelog
 
-## 1.2.8
-- Repo-Struktur auf *aduro2mqtt/* (flat) angepasst
-- Pins via `constraints.txt` (paho-mqtt<2, environs<11, marshmallow>=3.13,<4)
-- Statische Discovery (inkl. CO/ppm); optionales Auto-Learn und Cleanup
+## 1.3.0
+- Robust run loop (auto-restart on transient errors).
+- Discovery pruned (CO, temps, power, exhaust speed, etc.).
+- `discovery_exclude` option added.
+- Dependency pins (paho<2, marshmallow>=3.13).
