@@ -10,15 +10,30 @@ PWD  = os.getenv("MQTT_PASSWORD") or None
 DISC_PREFIX = os.getenv("DISCOVERY_PREFIX", "homeassistant").rstrip('/')
 DEVICE_NAME = os.getenv("DEVICE_NAME", "Aduro H2")
 DEVICE_ID   = os.getenv("DEVICE_ID", "aduro_h2")
+DEBUG       = os.getenv("DISCOVERY_DEBUG", "false").lower() == "true"
+
+def log(msg):
+    print(f"[discovery] {msg}", flush=True)
 
 def pub(client, topic, payload):
-    client.publish(topic, json.dumps(payload, ensure_ascii=False), qos=0, retain=True)
+    s = json.dumps(payload, ensure_ascii=False)
+    if DEBUG: log(f"publish {topic} -> {s}")
+    client.publish(topic, s, qos=0, retain=True)
 
 def main():
+    if DEBUG:
+        log(f"connect mqtt host={HOST} port={PORT} user={'<set>' if USER else '<none>'}")
+        log(f"discovery_prefix={DISC_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE}")
+
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"{DEVICE_ID}_disc")
     if USER:
         client.username_pw_set(USER, PWD)
-    client.connect(HOST, PORT, keepalive=30)
+
+    try:
+        client.connect(HOST, PORT, keepalive=30)
+    except Exception as e:
+        log(f"MQTT connect failed: {e}")
+        return
 
     device = {"ids": [DEVICE_ID], "name": DEVICE_NAME, "mf": "Aduro", "mdl": "via aduro2mqtt"}
 
@@ -66,9 +81,12 @@ def main():
     }
     pub(client, f"{DISC_PREFIX}/select/{DEVICE_ID}_fixed_power/config", select_payload)
 
-    client.loop(timeout=1.0)
-    time.sleep(0.2)
+    # flush a bit
+    for _ in range(3):
+        client.loop(timeout=1.0)
+        time.sleep(0.2)
     client.disconnect()
+    if DEBUG: log("done")
 
 if __name__ == "__main__":
     main()

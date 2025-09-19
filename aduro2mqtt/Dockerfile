@@ -15,7 +15,6 @@ COPY constraints.txt /opt/constraints.txt
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools &&     if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt -c /opt/constraints.txt; fi &&     pip install --no-cache-dir -c /opt/constraints.txt paho-mqtt
 
 COPY discovery.py /opt/discovery.py
-
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
