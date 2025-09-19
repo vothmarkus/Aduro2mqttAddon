@@ -25,9 +25,14 @@ DISCOVERY_LEARN_SECONDS="$(bashio::config 'discovery_learn_seconds')"
 
 DISCOVERY_TOPICS_DEFAULT="status,operating,advanced,settings/+,consumption/#"
 if bashio::config.has_value 'discovery_topics'; then
-  RAW_TOPICS="$(bashio::config 'discovery_topics')"
-  DISCOVERY_TOPICS="$(echo "${RAW_TOPICS}" | sed -e 's/^\[\(.*\)\]$/\1/' -e 's/\"//g' -e 's/"//g' -e 's/, */,/g' | tr -d '[:space:]')"
-  if [[ -z "${DISCOVERY_TOPICS}" ]]; then
+  DISCOVERY_TOPICS="$(/opt/venv/bin/python3 - <<'PY'
+import json,sys
+j=json.load(open('/data/options.json'))
+arr=j.get('discovery_topics') or []
+print(','.join(arr) if arr else '')
+PY
+)"
+  if [ -z "$DISCOVERY_TOPICS" ]; then
     DISCOVERY_TOPICS="${DISCOVERY_TOPICS_DEFAULT}"
   fi
 else
@@ -36,6 +41,7 @@ fi
 
 LOG_LEVEL="$(bashio::config 'log_level')"
 
+# Autodetect MQTT service if values missing
 if { [[ -z "${MQTT_HOST}" || "${MQTT_HOST}" == "null" ]] || [[ -z "${MQTT_PORT}" || "${MQTT_PORT}" == "null" ]] || [[ -z "${MQTT_USER}" || "${MQTT_USER}" == "null" ]] || [[ -z "${MQTT_PASSWORD}" || "${MQTT_PASSWORD}" == "null" ]] ; }    && bashio::services.available "mqtt"; then
   bashio::log.info "Erkenne MQTT-Service von HA (auto) ..."
   MQTT_HOST="${MQTT_HOST:-$(bashio::services 'mqtt' 'host')}"
