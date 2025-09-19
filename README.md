@@ -1,4 +1,4 @@
-# Projektname
+# Aduro2mqttAddon
 
 Wähle deine Sprache:
 
