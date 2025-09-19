@@ -22,11 +22,12 @@ DEVICE_NAME="$(bashio::config 'device_name')"
 DEVICE_ID="$(bashio::config 'device_id')"
 DISCOVERY_DEBUG="$(bashio::config 'discovery_debug')"
 DISCOVERY_LEARN_SECONDS="$(bashio::config 'discovery_learn_seconds')"
+DISCOVERY_CLEANUP="$(bashio::config 'discovery_cleanup')"
 
 DISCOVERY_TOPICS_DEFAULT="status,operating,advanced,settings/+,consumption/#"
 if bashio::config.has_value 'discovery_topics'; then
   DISCOVERY_TOPICS="$(/opt/venv/bin/python3 - <<'PY'
-import json,sys
+import json
 j=json.load(open('/data/options.json'))
 arr=j.get('discovery_topics') or []
 print(','.join(arr) if arr else '')
@@ -73,11 +74,12 @@ export DEVICE_ID="${DEVICE_ID:-aduro_h2}"
 export DISCOVERY_DEBUG="${DISCOVERY_DEBUG:-false}"
 export DISCOVERY_LEARN_SECONDS="${DISCOVERY_LEARN_SECONDS:-8}"
 export DISCOVERY_TOPICS="${DISCOVERY_TOPICS}"
+export DISCOVERY_CLEANUP="${DISCOVERY_CLEANUP}"
 
 export LOG_LEVEL="${LOG_LEVEL:-INFO}"
 
 bashio::log.info "MQTT: host=${MQTT_BROKER_HOST}, port=${MQTT_BROKER_PORT}, user=${MQTT_USER:-<none>}"
-bashio::log.info "Discovery: ${ENABLE_DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID}, learn=${DISCOVERY_LEARN_SECONDS}s, topics=${DISCOVERY_TOPICS})"
+bashio::log.info "Discovery: ${ENABLE_DISCOVERY} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID}, learn=${DISCOVERY_LEARN_SECONDS}s, topics=${DISCOVERY_TOPICS}, cleanup=${DISCOVERY_CLEANUP})"
 
 if [[ "${ENABLE_DISCOVERY}" == "true" ]]; then
   /opt/venv/bin/python3 /opt/discovery.py &

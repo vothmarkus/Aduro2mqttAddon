@@ -13,14 +13,18 @@ DEVICE_ID   = os.getenv("DEVICE_ID", "aduro_h2")
 DEBUG       = os.getenv("DISCOVERY_DEBUG", "false").lower() == "true"
 LEARN_SECS  = int(os.getenv("DISCOVERY_LEARN_SECONDS", "8"))
 TOPICS      = [t.strip() for t in (os.getenv("DISCOVERY_TOPICS","status,operating,advanced,settings/+,consumption/#")).split(",") if t.strip()]
+DO_CLEANUP  = os.getenv("DISCOVERY_CLEANUP","false").lower() == "true"
 
 def log(msg): 
     if DEBUG: print(f"[discovery] {msg}", flush=True)
 
-def pub(client, topic, payload):
-    s = json.dumps(payload, ensure_ascii=False)
-    log(f"publish {topic} -> {s}")
-    client.publish(topic, s, qos=0, retain=True)
+def pub(client, topic, payload, retain=True):
+    if isinstance(payload, dict):
+        s = json.dumps(payload, ensure_ascii=False)
+    else:
+        s = payload  # allow empty string for cleanup
+    log(f"publish {topic} -> {s if s else '<empty>'}")
+    client.publish(topic, s, qos=0, retain=retain)
 
 def unit_and_class(key, topic=""):
     k = key.lower()
@@ -48,6 +52,29 @@ def make_sensor(client, uid_suffix, name, state_topic, value_template, unit=None
     topic = f"{DISC_PREFIX}/sensor/{DEVICE_ID}_{uid_suffix}/config"
     pub(client, topic, payload)
 
+def cleanup_previous(client):
+    # Subscribe to all discovery topics, capture retained for our device_id, then clear them.
+    target_prefix = f"{DISC_PREFIX}/"
+    collected = set()
+    def on_msg(_c, _u, msg):
+        t = msg.topic
+        if f"/{DEVICE_ID}_" in t and t.startswith(target_prefix) and t.endswith("/config"):
+            collected.add(t)
+    client.on_message = on_msg
+    client.subscribe(f"{DISC_PREFIX}/#", qos=0)
+    log("collecting retained discovery configs for cleanup ...")
+    # Give broker a moment to send retained messages
+    start = time.time()
+    while time.time() - start < 2.5:
+        client.loop(timeout=0.5)
+    if collected:
+        log(f"cleanup {len(collected)} topics")
+        for t in collected:
+            pub(client, t, "", retain=True)  # empty retained payload clears topic
+            time.sleep(0.02)
+    else:
+        log("no old discovery topics found to cleanup")
+
 def main():
     client = mqtt.Client(client_id=f"{DEVICE_ID}_disc", protocol=mqtt.MQTTv311)
     if USER:
@@ -58,6 +85,10 @@ def main():
         log(f"MQTT connect failed: {e}")
         return
 
+    if DO_CLEANUP:
+        cleanup_previous(client)
+
+    # Static entities: switch + select
     switch_payload = {
         "name": f"{DEVICE_NAME} toggle",
         "uniq_id": f"{DEVICE_ID}_toggle",
@@ -76,13 +107,13 @@ def main():
         "cmd_tpl": '{"path": "regulation.fixed_power", "value": {{ value }} }',
         "stat_t": f"{BASE}/settings/regulation",
         "val_tpl": "{{ value_json.fixed_power | int }}",
-        "opts": ["10","50","100"],
+        "options": ["10","50","100"],
         "dev": {"ids":[DEVICE_ID],"name":DEVICE_NAME,"mf":"Aduro","mdl":"via aduro2mqtt"}
     }
     pub(client, f"{DISC_PREFIX}/select/{DEVICE_ID}_fixed_power/config", select_payload)
 
+    # Dynamic learn
     seen = set()
-
     def on_message(_c, _u, msg):
         topic = msg.topic
         try:
