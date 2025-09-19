@@ -1,7 +1,6 @@
 #!/usr/bin/with-contenv bashio
 set -euo pipefail
 
-# Suppress ResourceWarnings for unclosed sockets
 export PYTHONWARNINGS="ignore::ResourceWarning"
 export PYTHONUNBUFFERED=1
 
@@ -16,6 +15,11 @@ ADURO_HOST="$(bashio::config 'aduro_host')"
 ADURO_SERIAL="$(bashio::config 'aduro_serial')"
 ADURO_PIN="$(bashio::config 'aduro_pin')"
 ADURO_POLL_INTERVAL="$(bashio::config 'aduro_poll_interval')"
+
+ENABLE_DISCOVERY="$(bashio::config 'enable_discovery')"
+DISCOVERY_PREFIX="$(bashio::config 'discovery_prefix')"
+DEVICE_NAME="$(bashio::config 'device_name')"
+DEVICE_ID="$(bashio::config 'device_id')"
 
 LOG_LEVEL="$(bashio::config 'log_level')"
 
@@ -36,7 +40,16 @@ export ADURO_SERIAL="${ADURO_SERIAL}"
 export ADURO_PIN="${ADURO_PIN}"
 export ADURO_POLL_INTERVAL="${ADURO_POLL_INTERVAL:-30}"
 
+export DISCOVERY_PREFIX="${DISCOVERY_PREFIX:-homeassistant}"
+export DEVICE_NAME="${DEVICE_NAME:-Aduro H2}"
+export DEVICE_ID="${DEVICE_ID:-aduro_h2}"
+
 export LOG_LEVEL="${LOG_LEVEL:-INFO}"
+
+if [[ "${ENABLE_DISCOVERY}" == "true" ]]; then
+  /opt/venv/bin/python3 /opt/discovery.py &
+  bashio::log.info "MQTT Discovery gestartet (Prefix: ${DISCOVERY_PREFIX}, Device: ${DEVICE_NAME}/${DEVICE_ID})"
+fi
 
 bashio::log.info "Starte aduro2mqtt: MQTT @ ${MQTT_BROKER_HOST}:${MQTT_BROKER_PORT}, Aduro @ ${ADURO_HOST}, Poll=${ADURO_POLL_INTERVAL}s"
 
