@@ -3,15 +3,17 @@
 """
 Aduro2mqttAddon MQTT Discovery
 
-- climate (hvac_modes: off/heat) mit preset_modes:
-  * "Temperature" -> regulation.operation_mode = 1
-  * "Power 10/50/100" -> regulation.fixed_power = 10/50/100
-  * target temperature: boiler.ref (STATE aus settings/boiler.ref)
-  * current temperature: room_temp (Fallback boiler_temp)
+- climate (hvac_modes: off/heat) + preset_modes:
+    "Temperature" -> regulation.operation_mode = 1
+    "Power 10/50/100" -> regulation.fixed_power = 10/50/100
+  target temperature: boiler.ref  (STATE: settings/boiler.ref)
+  current temperature: room_temp (fallback boiler_temp)
+
+- switch: Heating (ON→misc.start / OFF→misc.stop), STATE aus status.state_super
 
 - number: Force Auger (s)
 
-- sensors (mit DISCOVERY_EXCLUDE-Filter, komma-separiert):
+- sensors (mit optionalem DISCOVERY_EXCLUDE, komma-separiert):
   room_temp, boiler_temp, state_super, boiler_ref, operation_mode, fixed_power
 """
 
@@ -30,7 +32,6 @@ MQTT_PORT        = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER        = os.getenv("MQTT_USER") or os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD    = os.getenv("MQTT_PASSWORD", "")
 
-# DISCOVERY_EXCLUDE z.B.: "boiler_pump_state,return_temp"
 EXCLUDE_RAW      = (os.getenv("DISCOVERY_EXCLUDE") or "").strip()
 EXCLUDE_SET      = set([s.strip() for s in EXCLUDE_RAW.split(",") if s.strip()])
 
@@ -43,12 +44,9 @@ DEVICE = {
     "model": "via aduro2mqtt",
 }
 
-def disc_topic(kind: str, object_id: str = "") -> str:
+def disc_topic(kind: str, object_id: str) -> str:
     """Home Assistant MQTT Discovery topic."""
-    if object_id:
-        return f"{DISCOVERY_PREFIX}/{kind}/{object_id}/config"
-    # climate bekommt <DEVICE_ID> direkt
-    return f"{DISCOVERY_PREFIX}/{kind}/{DEVICE_ID}/config"
+    return f"{DISCOVERY_PREFIX}/{kind}/{object_id}/config"
 
 def mqtt_connect() -> mqtt.Client:
     c = mqtt.Client(client_id=f"{DEVICE_ID}_disc")
@@ -59,10 +57,13 @@ def mqtt_connect() -> mqtt.Client:
 
 def publish_config(client: mqtt.Client, topic: str, payload: Dict[str, Any]) -> None:
     payload.setdefault("device", DEVICE)
+    # Beides setzen – manche Setups schauen auf unique_id, Discovery braucht eigentlich uniq_id
+    if "uniq_id" in payload and "unique_id" not in payload:
+        payload["unique_id"] = payload["uniq_id"]
     j = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     client.publish(topic, j, qos=1, retain=True)
 
-# ------------- CLIMATE -------------
+# ---------- CLIMATE ----------
 def build_climate_payload() -> Dict[str, Any]:
     preset_cmd = (
         "{% if value in ['Temperature'] %}"
@@ -113,7 +114,25 @@ def build_climate_payload() -> Dict[str, Any]:
         "temp_step": 0.5,
     }
 
-# ------------- NUMBER (Force Auger) -------------
+# ---------- SWITCH (Heizbetrieb EIN/AUS) ----------
+def build_switch_payload() -> Dict[str, Any]:
+    return {
+        "name": f"{DEVICE_NAME} Heating",
+        "uniq_id": f"{DEVICE_ID}_heating",
+        "command_topic": f"{BASE_TOPIC}/set",
+        "command_template": (
+            "{% if value in ['ON','on','true','True',1] %}"
+            "{\"path\":\"misc.start\",\"value\":\"1\"}"
+            "{% else %}"
+            "{\"path\":\"misc.stop\",\"value\":\"1\"}"
+            "{% endif %}"
+        ),
+        "state_topic": f"{BASE_TOPIC}/status",
+        "value_template": "{{ 'ON' if (value_json.state_super|int) == 1 else 'OFF' }}",
+        "icon": "mdi:radiator",
+    }
+
+# ---------- NUMBER (Force Auger) ----------
 def build_force_auger_payload() -> Dict[str, Any]:
     return {
         "name": f"{DEVICE_NAME} Force Auger (s)",
@@ -123,16 +142,14 @@ def build_force_auger_payload() -> Dict[str, Any]:
         "state_topic": f"{BASE_TOPIC}/settings/auger",
         "value_template": "{{ value_json.forced_run|int if value_json.forced_run is defined else 0 }}",
         "min": 0, "max": 120, "step": 5,
-        "device": DEVICE,
     }
 
-# ------------- SENSORS -------------
-def sensor(kind: str, key: str, name: str, state_topic: str, value_template: str,
-           unit: str = None, device_class: str = None, icon: str = None,
-           state_class: str = None) -> Dict[str, Any]:
+# ---------- SENSORS ----------
+def sensor(object_id: str, name: str, state_topic: str, value_template: str,
+           unit: str = None, device_class: str = None, icon: str = None, state_class: str = None) -> Dict[str, Any]:
     p = {
         "name": name,
-        "uniq_id": f"{DEVICE_ID}_{key}",
+        "uniq_id": object_id,
         "state_topic": state_topic,
         "value_template": value_template,
         "device": DEVICE,
@@ -144,66 +161,4 @@ def sensor(kind: str, key: str, name: str, state_topic: str, value_template: str
     return p
 
 def build_sensors() -> List[Dict[str, Any]]:
-    items = []
-
-    # status: room_temp, boiler_temp, state_super
-    if "room_temp" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_room_temp",
-                      sensor("sensor", "room_temp", f"{DEVICE_NAME} Room Temperature",
-                             f"{BASE_TOPIC}/status", "{{ value_json.room_temp|float }}",
-                             "°C", "temperature", None, "measurement")))
-
-    if "boiler_temp" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_boiler_temp",
-                      sensor("sensor", "boiler_temp", f"{DEVICE_NAME} Boiler Temperature",
-                             f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp|float }}",
-                             "°C", "temperature", None, "measurement")))
-
-    if "state_super" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_state_super",
-                      sensor("sensor", "state_super", f"{DEVICE_NAME} State Super",
-                             f"{BASE_TOPIC}/status", "{{ value_json.state_super|int }}",
-                             None, None, "mdi:fire")))
-
-    # operating: boiler_ref (Ist des Targets)
-    if "boiler_ref" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_boiler_ref",
-                      sensor("sensor", "boiler_ref", f"{DEVICE_NAME} Boiler Ref",
-                             f"{BASE_TOPIC}/operating", "{{ value_json.boiler_ref|float }}",
-                             "°C", "temperature", None, "measurement")))
-
-    # settings/regulation: operation_mode, fixed_power
-    if "operation_mode" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_operation_mode",
-                      sensor("sensor", "operation_mode", f"{DEVICE_NAME} Operation Mode",
-                             f"{BASE_TOPIC}/settings/regulation", "{{ value_json.operation_mode|int }}")))
-
-    if "fixed_power" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_fixed_power",
-                      sensor("sensor", "fixed_power", f"{DEVICE_NAME} Fixed Power",
-                             f"{BASE_TOPIC}/settings/regulation", "{{ value_json.fixed_power|int }}",
-                             "%")))
-
-    return items
-
-def main():
-    c = mqtt_connect()
-    c.loop_start()
-
-    # Climate
-    publish_config(c, disc_topic("climate"), build_climate_payload())
-
-    # Force Auger
-    publish_config(c, disc_topic("number", f"{DEVICE_ID}_force_auger"), build_force_auger_payload())
-
-    # Sensors
-    for kind, object_id, payload in build_sensors():
-        publish_config(c, disc_topic(kind, object_id), payload)
-
-    time.sleep(0.3)
-    c.loop_stop()
-    c.disconnect()
-    print("[discovery] climate, number, sensors published.")
-
-if __name__ == "__main__":
-    main()
+    items =
