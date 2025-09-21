@@ -53,7 +53,7 @@ def publish_entity_full(client, payload):
 def publish_climate(client):
     payload = {
         "name": DEVICE_NAME,
-        "modes": ["off","heat"],
+        "modes": ["off","heat", "test"],
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
         "mode_command_template":
             "{% if value == 'off' %}{\"path\":\"misc.stop\",\"value\":\"1\"}"
@@ -90,6 +90,18 @@ def publish_switch(client):
         "opt": True
     }
     publish_entity_short(client, "switch", "heating", payload)
+
+# ---------- SWITCH (fixed_power) ----------
+def publish_fixed_power(client):
+    payload = {
+        "name": f"{DEVICE_NAME} Fixed power (%)",
+        "cmd_t": f"{BASE_TOPIC}/set",
+        "cmd_tpl": '{"path": "regulation.fixed_power", "value": {{ value }} }',
+        "stat_t": f"{BASE_TOPIC}/settings/regulation",
+        "val_tpl": "{{ value_json.fixed_power | int }}",
+        "options": ["10","50","100"],
+    }
+    publish_entity(client, "select", "fixed_power", payload)
 
 # ---------- NUMBER (Force Auger) ----------
 def publish_number_force_auger(client):
@@ -143,6 +155,7 @@ def main():
 
     publish_climate(client)
     publish_switch(client)
+    publish_fixed_power(client)
     publish_number_force_auger(client)
     publish_sensors(client)
 
