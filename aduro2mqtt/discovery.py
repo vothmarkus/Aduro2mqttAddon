@@ -32,18 +32,19 @@ def disc_topic(kind: str, object_id: str) -> str:
     return f"{DISCOVERY_PREFIX}/{kind}/{DEVICE_ID}_{object_id}/config"
 
 def device_payload():
-    # Kurze Keys wie in deiner Altversion (HA versteht die Kurzformen)
+    # Kurzschreibweise kompatibel zu deiner Altversion
     return {"ids": [DEVICE_ID], "name": DEVICE_NAME, "mf": "Aduro", "mdl": "via aduro2mqtt"}
 
 def publish_entity(client, kind, object_id, payload):
     full = disc_topic(kind, object_id)
     payload["uniq_id"] = f"{DEVICE_ID}_{object_id}"
     payload["dev"] = device_payload()
-    # kompakte JSON-Ausgabe
     client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), retain=True)
+    print(f"[discovery] published {kind}:{object_id} -> {full}")
 
+# ---------- CLIMATE ----------
 def publish_climate(client):
-    # Climate mit Presets (Temperature / Power 10/50/100)
+    # Preset-Steuerung
     preset_cmd = (
         "{% if value in ['Temperature'] %}"
         "{{\"path\":\"regulation.operation_mode\",\"value\":" + str(TEMP_MODE_VALUE) + "}}"
@@ -62,7 +63,7 @@ def publish_climate(client):
 
     payload = {
         "name": DEVICE_NAME,
-        # HVAC an/aus
+
         "modes": ["off","heat"],
         "mode_command_topic": f"{BASE_TOPIC}/set",
         "mode_command_template": (
@@ -72,20 +73,19 @@ def publish_climate(client):
         "mode_state_topic": f"{BASE_TOPIC}/status",
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
-        # Presets für Temperatur-/Powerbetrieb
         "preset_modes": ["Temperature","Power 10","Power 50","Power 100"],
         "preset_mode_command_topic": f"{BASE_TOPIC}/set",
         "preset_mode_command_template": preset_cmd,
         "preset_mode_state_topic": f"{BASE_TOPIC}/settings/regulation",
         "preset_mode_state_template": preset_state,
 
-        # Target-Temp: Kommando auf boiler.ref, State aus settings/boiler.ref (verhindert 25°C-Rücksprung)
+        # Zieltemperatur
         "temperature_command_topic": f"{BASE_TOPIC}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{BASE_TOPIC}/settings/boiler",
         "temperature_state_template": "{{ value_json.ref|float }}",
 
-        # Ist-Temp: room_temp mit Fallback auf boiler_temp
+        # Isttemperatur (room_temp, Fallback boiler_temp)
         "current_temperature_topic": f"{BASE_TOPIC}/status",
         "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
 
@@ -94,11 +94,11 @@ def publish_climate(client):
         "max_temp": 30,
         "temp_step": 0.5
     }
-    # Climate bekommt ein klareres Objekt: <device>_climate
+    # Climate als eigenes Objekt
     publish_entity(client, "climate", "climate", payload)
 
+# ---------- SWITCH (Heizbetrieb EIN/AUS) ----------
 def publish_switch(client):
-    # Heizbetrieb EIN/AUS als Switch
     payload = {
         "name": f"{DEVICE_NAME} Heating",
         "cmd_t": f"{BASE_TOPIC}/set",
@@ -116,6 +116,7 @@ def publish_switch(client):
     }
     publish_entity(client, "switch", "heating", payload)
 
+# ---------- NUMBER (Force Auger) ----------
 def publish_number_force_auger(client):
     payload = {
         "name": f"{DEVICE_NAME} Force Auger (s)",
@@ -128,18 +129,29 @@ def publish_number_force_auger(client):
     }
     publish_entity(client, "number", "force_auger", payload)
 
+# ---------- SENSORS ----------
 def publish_sensors(client):
-    # Sensoren wie in deiner Altversion – inkl. Room Temp aus boiler_temp
+    # Bestehende + die neu gewünschten Status-Sensoren
     sensors = {
-        "room_temp":        (f"{DEVICE_NAME} Room Temperature",   f"{BASE_TOPIC}/status",              "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
-        "boiler_temp":      (f"{DEVICE_NAME} Boiler Temperature", f"{BASE_TOPIC}/status",              "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
-        "state_super":      (f"{DEVICE_NAME} State Super",        f"{BASE_TOPIC}/status",              "{{ value_json.state_super|int }}",   None, None, None),
-        "boiler_ref":       (f"{DEVICE_NAME} Boiler Ref",         f"{BASE_TOPIC}/settings/boiler",     "{{ value_json.ref|float }}",         "°C", "temperature", "measurement"),
-        "operation_mode":   (f"{DEVICE_NAME} Operation Mode",     f"{BASE_TOPIC}/settings/regulation", "{{ value_json.operation_mode|int }}", None, None, None),
-        "fixed_power":      (f"{DEVICE_NAME} Fixed Power",        f"{BASE_TOPIC}/settings/regulation", "{{ value_json.fixed_power|int }}",   "%",  None, "measurement"),
-        # optional abwählbar wie früher:
-        "boiler_pump_state":(f"{DEVICE_NAME} Boiler Pump",        f"{BASE_TOPIC}/operating",           "{{ value_json.boiler_pump_state|int }}", "", None, None),
-        "return_temp":      (f"{DEVICE_NAME} Return Temp",        f"{BASE_TOPIC}/operating",           "{{ value_json.return_temp|float }}", "°C", "temperature", "measurement"),
+        # „Room Temp“ wie früher aus boiler_temp, damit sicher Werte kommen
+        "room_temp":        (f"{DEVICE_NAME} Room Temperature",   f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
+        "boiler_temp":      (f"{DEVICE_NAME} Boiler Temperature", f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
+        "state_super":      (f"{DEVICE_NAME} State Super",        f"{BASE_TOPIC}/status", "{{ value_json.state_super|int }}",   None, None, None),
+        "boiler_ref":       (f"{DEVICE_NAME} Boiler Ref",         f"{BASE_TOPIC}/settings/boiler", "{{ value_json.ref|float }}", "°C", "temperature", "measurement"),
+        "operation_mode":   (f"{DEVICE_NAME} Operation Mode",     f"{BASE_TOPIC}/status", "{{ value_json.operation_mode|int }}", None, None, None),
+        "fixed_power":      (f"{DEVICE_NAME} Fixed Power",        f"{BASE_TOPIC}/settings/regulation", "{{ value_json.fixed_power|int }}", "%",  None, "measurement"),
+
+        # von dir explizit gewünscht (alle aus status):
+        "smoke_temp":       (f"{DEVICE_NAME} Smoke Temp",         f"{BASE_TOPIC}/status", "{{ value_json.smoke_temp|float }}", "°C", "temperature", "measurement"),
+        "state":            (f"{DEVICE_NAME} State",              f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",        None, None, None),
+        "state_sec":        (f"{DEVICE_NAME} State Sec",          f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}",    "s",  None, "measurement"),
+        "substate":         (f"{DEVICE_NAME} Substate",           f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}",     None, None, None),
+        "substate_sec":     (f"{DEVICE_NAME} Substate Sec",       f"{BASE_TOPIC}/status", "{{ value_json.substate_sec|int }}", "s",  None, "measurement"),
+        "outdoor_temp":     (f"{DEVICE_NAME} Outdoor Temp",       f"{BASE_TOPIC}/status", "{{ value_json.outdoor_temp|float }}", "°C", "temperature", "measurement"),
+        "oxygen":           (f"{DEVICE_NAME} Oxygen",             f"{BASE_TOPIC}/status", "{{ value_json.oxygen|float }}",     "%",  None, "measurement"),
+        "exhaust_speed":    (f"{DEVICE_NAME} Exhaust Speed",      f"{BASE_TOPIC}/status", "{{ value_json.exhaust_speed|float }}", "", None, "measurement"),
+        "power_pct":        (f"{DEVICE_NAME} Power Pct",          f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}",  "%",  None, "measurement"),
+        "shaft_temp":       (f"{DEVICE_NAME} Shaft Temp",         f"{BASE_TOPIC}/status", "{{ value_json.shaft_temp|float }}", "°C", "temperature", "measurement"),
     }
 
     for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():
@@ -152,13 +164,13 @@ def publish_sensors(client):
         publish_entity(client, "sensor", key, payload)
 
 def main():
-    print(f"[discovery] connect mqtt host={MQTT_HOST} port={MQTT_PORT} user={'<set>' if MQTT_USER else '<none>'}")
-    print(f"[discovery] discovery_prefix={DISCOVERY_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE_TOPIC}")
+    print(f"[discovery] mqtt={MQTT_HOST}:{MQTT_PORT} user={'<set>' if MQTT_USER else '<none>'}")
+    print(f"[discovery] prefix={DISCOVERY_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE_TOPIC}")
     print(f"[discovery] exclude={sorted(EXCLUDE)}")
 
     client = client_connect()
 
-    # Entities publishen (retain)
+    # Entities (retain) veröffentlichen
     publish_climate(client)
     publish_switch(client)
     publish_number_force_auger(client)
