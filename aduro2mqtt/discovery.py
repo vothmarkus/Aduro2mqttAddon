@@ -63,7 +63,25 @@ def publish_entity_full(client, payload):
     client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
     print(f"[discovery] published climate -> {full}")
 
+def publish_entity_full(client, payload):
+    # Climate bewusst unter .../climate/<DEVICE_ID>_climate/config veröffentlichen
+    disc = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}_climate/config"
+    # volle Device-Infos
+    device_full = {
+        "identifiers": [DEVICE_ID],
+        "name": DEVICE_NAME,
+        "manufacturer": "Aduro",
+        "model": "via aduro2mqtt",
+    }
+    # IDs doppelt setzen (kompatibel zu allen HA-Versionen)
+    payload["unique_id"] = f"{DEVICE_ID}_climate"
+    payload["uniq_id"]   = f"{DEVICE_ID}_climate"
+    payload["device"]    = device_full
+    client.publish(disc, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
+    print(f"[discovery] published climate -> {disc}")
+
 def publish_climate(client):
+    # Preset-Commands (Temperaturregelung vs. feste Leistung)
     preset_cmd = (
         "{% if value == 'Temperature' %}"
         "{{\"path\":\"regulation.operation_mode\",\"value\":1}}"
@@ -75,8 +93,8 @@ def publish_climate(client):
         "{{\"path\":\"regulation.fixed_power\",\"value\":100}}"
         "{% endif %}"
     )
-    # WICHTIG: aus 'status' lesen und Punkt-Key per Index!
-    preset_val = (
+    # Aus STATUS lesen; Punkt-Keys via Index!
+    preset_tpl = (
         "{{ 'Temperature' if (value_json.operation_mode|int) == 1 "
         "else ((value_json['regulation.fixed_power']|int) ~ '') }}"
     )
@@ -84,7 +102,7 @@ def publish_climate(client):
     payload = {
         "name": DEVICE_NAME,
 
-        # nur gültige HVAC-Modi
+        # nur gültige HVAC-Modi (sonst verwirft HA die Entity)
         "modes": ["off", "heat"],
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
         "mode_command_template":
@@ -93,23 +111,24 @@ def publish_climate(client):
         "mode_state_topic": f"{DEVICE_PREFIX}/status",
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
-        # Presets
+        # ---- Presets (DOKU-konform) ----
         "preset_modes": ["Temperature", "10", "50", "100"],
         "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
         "preset_mode_command_template": preset_cmd,
         "preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
-        "preset_mode_value_template": preset_val,
+        "preset_mode_value_template": preset_tpl,
 
-        # Temperatur-Soll (bewährt)
+        # Zieltemperatur (bewährter Pfad)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
         "temperature_state_template": "{{ value_json.boiler_ref|float }}",
 
-        # Temperatur-Ist
+        # Ist-Temperatur
         "current_temperature_topic": f"{DEVICE_PREFIX}/status",
         "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
 
+        # Limits/Step wie gewünscht
         "temperature_unit": "C",
         "min_temp": 5,
         "max_temp": 35,
