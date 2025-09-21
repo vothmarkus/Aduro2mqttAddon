@@ -1,5 +1,5 @@
 name: Aduro2MQTT
-version: 1.4.17
+version: 1.4.18
 slug: aduro2mqtt
 description: "MQTT bridge for Aduro H2 with Home Assistant Discovery."
 arch:
