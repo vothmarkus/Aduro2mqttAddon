@@ -62,16 +62,17 @@ def publish_climate(client):
         "{{\"path\":\"regulation.fixed_power\",\"value\":100}}"
         "{% endif %}"
     )
-    # Wichtig: *_value_template (nicht *_state_template)
+
+    # Wichtig: state aus aduro2mqtt/status und Key mit Punkt via ['...'] lesen
     preset_val = (
         "{{ 'Temperature' if (value_json.operation_mode|int) == 1 "
-        "else ((value_json.fixed_power|int) ~ '') }}"
+        "else ((value_json['regulation.fixed_power']|int) ~ '') }}"
     )
 
     payload = {
         "name": DEVICE_NAME,
 
-        # gültige HVAC-Modi
+        # Nur gültige HVAC-Modi – sonst riskiert man komisches Verhalten
         "modes": ["off", "heat"],
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
         "mode_command_template":
@@ -80,14 +81,14 @@ def publish_climate(client):
         "mode_state_topic": f"{DEVICE_PREFIX}/status",
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
-        # Presets für Temperatur / feste Leistung
+        # Presets (Temperatur vs. feste Leistung)
         "preset_modes": ["Temperature", "10", "50", "100"],
         "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
         "preset_mode_command_template": preset_cmd,
-        "preset_mode_state_topic": f"{DEVICE_PREFIX}/settings/regulation",
+        "preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
         "preset_mode_value_template": preset_val,
 
-        # Zieltemperatur (bewährter Pfad)
+        # Solltemperatur (bewährt)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
@@ -103,6 +104,7 @@ def publish_climate(client):
         "temp_step": 1
     }
     publish_entity_full(client, payload)
+
 
 # ---------- SWITCH (Heizbetrieb) ----------
 def publish_switch(client):
