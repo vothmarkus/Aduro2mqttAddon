@@ -101,7 +101,7 @@ def publish_fixed_power(client):
         "val_tpl": "{{ value_json.fixed_power | int }}",
         "options": ["10","50","100"],
     }
-    publish_entity(client, "select", "fixed_power", payload)
+    publish_entity_short(client, "select", "fixed_power", payload)
 
 # ---------- NUMBER (Force Auger) ----------
 def publish_number_force_auger(client):
