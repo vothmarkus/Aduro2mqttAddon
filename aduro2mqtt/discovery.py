@@ -49,23 +49,52 @@ def publish_entity_full(client, payload):
     payload["device"] = device_payload_full()
     client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
 
-# ---------- CLIMATE (bewährt) ----------
+# ---------- CLIMATE ----------
 def publish_climate(client):
+    preset_cmd = (
+        "{% if value == 'Temperature' %}"
+        "{{\"path\":\"regulation.operation_mode\",\"value\":1}}"
+        "{% elif value == '10' %}"
+        "{{\"path\":\"regulation.fixed_power\",\"value\":10}}"
+        "{% elif value == '50' %}"
+        "{{\"path\":\"regulation.fixed_power\",\"value\":50}}"
+        "{% elif value == '100' %}"
+        "{{\"path\":\"regulation.fixed_power\",\"value\":100}}"
+        "{% endif %}"
+    )
+    preset_val = (
+        "{{ 'Temperature' if (value_json.operation_mode|int) == 1 else ((value_json.fixed_power|int) ~ '') }}"
+    )
+
     payload = {
         "name": DEVICE_NAME,
-        "modes": ["off","heat", "test"],
+
+        # Nur gültige HVAC-Modi!
+        "modes": ["off", "heat"],
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
         "mode_command_template":
             "{% if value == 'off' %}{\"path\":\"misc.stop\",\"value\":\"1\"}"
             "{% else %}{\"path\":\"misc.start\",\"value\":\"1\"}{% endif %}",
         "mode_state_topic": f"{DEVICE_PREFIX}/status",
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
+
+        # Presets für Temperatur-/Powerbetrieb
+        "preset_modes": ["Temperature", "10", "50", "100"],
+        "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
+        "preset_mode_command_template": preset_cmd,
+        "preset_mode_state_topic": f"{DEVICE_PREFIX}/settings/regulation",
+        "preset_mode_value_template": preset_val,
+
+        # Zieltemperatur
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
         "temperature_state_template": "{{ value_json.boiler_ref|float }}",
+
+        # Isttemperatur
         "current_temperature_topic": f"{DEVICE_PREFIX}/status",
         "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
+
         "temperature_unit": "C",
         "min_temp": 5,
         "max_temp": 35,
