@@ -100,7 +100,7 @@ def publish_climate(client):
         "max_temp": 35,
         "temp_step": 1
     }
-    publish_entity_full(client, payload)
+    publish_entity_short(client, payload)
 
 # ---------- SWITCH (Heizbetrieb) ----------
 def publish_switch(client):
