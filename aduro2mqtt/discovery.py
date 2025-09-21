@@ -1,24 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Aduro2mqttAddon MQTT Discovery
-
-- climate (hvac_modes: off/heat) mit preset_modes:
-    "Temperature" -> regulation.operation_mode = 1
-    "Power 10/50/100" -> regulation.fixed_power = 10/50/100
-  target temperature: boiler.ref  (STATE: settings/boiler.ref)
-  current temperature: room_temp (Fallback: boiler_temp)
-
-- switch: Heating (ON→misc.start / OFF→misc.stop), STATE aus status.state_super
-- number: Force Auger (s)
-- sensors (mit optionalem DISCOVERY_EXCLUDE, komma-separiert):
-  room_temp, boiler_temp, state_super, boiler_ref, operation_mode, fixed_power
-"""
-
-import os
-import json
-import time
-from typing import Dict, Any, List
+import json, os, time
 import paho.mqtt.client as mqtt
 
 # ---- ENV aus run.sh / Add-on-Optionen ----
@@ -29,42 +11,39 @@ DEVICE_ID        = os.getenv("DEVICE_ID", "aduro_h2").strip()
 
 MQTT_HOST        = os.getenv("MQTT_HOST", "core-mosquitto").strip()
 MQTT_PORT        = int(os.getenv("MQTT_PORT", "1883"))
-MQTT_USER        = os.getenv("MQTT_USER") or os.getenv("MQTT_USERNAME")
-MQTT_PASSWORD    = os.getenv("MQTT_PASSWORD", "")
+MQTT_USER        = os.getenv("MQTT_USER")
+MQTT_PASSWORD    = os.getenv("MQTT_PASSWORD")
 
-EXCLUDE_RAW      = (os.getenv("DISCOVERY_EXCLUDE") or "").strip()
-EXCLUDE_SET      = set([s.strip() for s in EXCLUDE_RAW.split(",") if s.strip()])
+# Exclude-Liste wie in deinem run.sh default
+EXCLUDE_RAW      = os.getenv("DISCOVERY_EXCLUDE", "boiler_pump_state,return_temp")
+EXCLUDE          = set(e.strip().lower() for e in EXCLUDE_RAW.split(",") if e.strip())
 
-TEMP_MODE_VALUE  = 1  # Aduro H2: Temperaturregelung = 1
+TEMP_MODE_VALUE  = 1  # Aduro H2: Temperaturregelung
 
-DEVICE = {
-    "identifiers": [DEVICE_ID],
-    "name": DEVICE_NAME,
-    "manufacturer": "Aduro",
-    "model": "via aduro2mqtt",
-}
-
-def disc_topic(kind: str, object_id: str) -> str:
-    """Home Assistant MQTT Discovery topic."""
-    return f"{DISCOVERY_PREFIX}/{kind}/{object_id}/config"
-
-def mqtt_connect() -> mqtt.Client:
+def client_connect() -> mqtt.Client:
     c = mqtt.Client(client_id=f"{DEVICE_ID}_disc")
     if MQTT_USER:
         c.username_pw_set(MQTT_USER, MQTT_PASSWORD or "")
     c.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
     return c
 
-def publish_config(client: mqtt.Client, topic: str, payload: Dict[str, Any]) -> None:
-    payload.setdefault("device", DEVICE)
-    # Beides setzen – manche Frontends zeigen auf unique_id
-    if "uniq_id" in payload and "unique_id" not in payload:
-        payload["unique_id"] = payload["uniq_id"]
-    j = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    client.publish(topic, j, qos=1, retain=True)
+def disc_topic(kind: str, object_id: str) -> str:
+    # Einheitliche Object-IDs: <DEVICE_ID>_<object>
+    return f"{DISCOVERY_PREFIX}/{kind}/{DEVICE_ID}_{object_id}/config"
 
-# ---------- CLIMATE ----------
-def build_climate_payload() -> Dict[str, Any]:
+def device_payload():
+    # Kurze Keys wie in deiner Altversion (HA versteht die Kurzformen)
+    return {"ids": [DEVICE_ID], "name": DEVICE_NAME, "mf": "Aduro", "mdl": "via aduro2mqtt"}
+
+def publish_entity(client, kind, object_id, payload):
+    full = disc_topic(kind, object_id)
+    payload["uniq_id"] = f"{DEVICE_ID}_{object_id}"
+    payload["dev"] = device_payload()
+    # kompakte JSON-Ausgabe
+    client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), retain=True)
+
+def publish_climate(client):
+    # Climate mit Presets (Temperature / Power 10/50/100)
     preset_cmd = (
         "{% if value in ['Temperature'] %}"
         "{{\"path\":\"regulation.operation_mode\",\"value\":" + str(TEMP_MODE_VALUE) + "}}"
@@ -81,11 +60,10 @@ def build_climate_payload() -> Dict[str, Any]:
         " else ('Power ' ~ (value_json.fixed_power|int)) }}"
     )
 
-    return {
+    payload = {
         "name": DEVICE_NAME,
-        "uniq_id": f"{DEVICE_ID}_climate",
-
-        "modes": ["off", "heat"],
+        # HVAC an/aus
+        "modes": ["off","heat"],
         "mode_command_topic": f"{BASE_TOPIC}/set",
         "mode_command_template": (
             "{% if value == 'off' %}{\"path\":\"misc.stop\",\"value\":\"1\"}"
@@ -94,17 +72,20 @@ def build_climate_payload() -> Dict[str, Any]:
         "mode_state_topic": f"{BASE_TOPIC}/status",
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
+        # Presets für Temperatur-/Powerbetrieb
         "preset_modes": ["Temperature","Power 10","Power 50","Power 100"],
         "preset_mode_command_topic": f"{BASE_TOPIC}/set",
         "preset_mode_command_template": preset_cmd,
         "preset_mode_state_topic": f"{BASE_TOPIC}/settings/regulation",
         "preset_mode_state_template": preset_state,
 
+        # Target-Temp: Kommando auf boiler.ref, State aus settings/boiler.ref (verhindert 25°C-Rücksprung)
         "temperature_command_topic": f"{BASE_TOPIC}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{BASE_TOPIC}/settings/boiler",
         "temperature_state_template": "{{ value_json.ref|float }}",
 
+        # Ist-Temp: room_temp mit Fallback auf boiler_temp
         "current_temperature_topic": f"{BASE_TOPIC}/status",
         "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
 
@@ -113,117 +94,81 @@ def build_climate_payload() -> Dict[str, Any]:
         "max_temp": 30,
         "temp_step": 0.5
     }
+    # Climate bekommt ein klareres Objekt: <device>_climate
+    publish_entity(client, "climate", "climate", payload)
 
-# ---------- SWITCH (Heizbetrieb EIN/AUS) ----------
-def build_switch_payload() -> Dict[str, Any]:
-    return {
+def publish_switch(client):
+    # Heizbetrieb EIN/AUS als Switch
+    payload = {
         "name": f"{DEVICE_NAME} Heating",
-        "uniq_id": f"{DEVICE_ID}_heating",
-        "command_topic": f"{BASE_TOPIC}/set",
-        "command_template": (
+        "cmd_t": f"{BASE_TOPIC}/set",
+        "cmd_tpl": (
             "{% if value in ['ON','on','true','True',1] %}"
             "{\"path\":\"misc.start\",\"value\":\"1\"}"
             "{% else %}"
             "{\"path\":\"misc.stop\",\"value\":\"1\"}"
             "{% endif %}"
         ),
-        "state_topic": f"{BASE_TOPIC}/status",
-        "value_template": "{{ 'ON' if (value_json.state_super|int) == 1 else 'OFF' }}",
-        "icon": "mdi:radiator"
+        "stat_t": f"{BASE_TOPIC}/status",
+        "val_tpl": "{{ 'ON' if (value_json.state_super|int) == 1 else 'OFF' }}",
+        "icon": "mdi:radiator",
+        "opt": True
     }
+    publish_entity(client, "switch", "heating", payload)
 
-# ---------- NUMBER (Force Auger) ----------
-def build_force_auger_payload() -> Dict[str, Any]:
-    return {
+def publish_number_force_auger(client):
+    payload = {
         "name": f"{DEVICE_NAME} Force Auger (s)",
-        "uniq_id": f"{DEVICE_ID}_force_auger",
-        "command_topic": f"{BASE_TOPIC}/set",
-        "command_template": "{\"path\":\"auger.forced_run\",\"value\": {{ value|int }} }",
-        "state_topic": f"{BASE_TOPIC}/settings/auger",
-        "value_template": "{{ value_json.forced_run|int if value_json.forced_run is defined else 0 }}",
-        "min": 0, "max": 120, "step": 5
+        "cmd_t": f"{BASE_TOPIC}/set",
+        "cmd_tpl": "{\"path\":\"auger.forced_run\",\"value\": {{ value|int }} }",
+        "stat_t": f"{BASE_TOPIC}/settings/auger",
+        "val_tpl": "{{ value_json.forced_run|int if value_json.forced_run is defined else 0 }}",
+        "min": 0, "max": 120, "step": 5,
+        "mode": "slider"
+    }
+    publish_entity(client, "number", "force_auger", payload)
+
+def publish_sensors(client):
+    # Sensoren wie in deiner Altversion – inkl. Room Temp aus boiler_temp
+    sensors = {
+        "room_temp":        (f"{DEVICE_NAME} Room Temperature",   f"{BASE_TOPIC}/status",              "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
+        "boiler_temp":      (f"{DEVICE_NAME} Boiler Temperature", f"{BASE_TOPIC}/status",              "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
+        "state_super":      (f"{DEVICE_NAME} State Super",        f"{BASE_TOPIC}/status",              "{{ value_json.state_super|int }}",   None, None, None),
+        "boiler_ref":       (f"{DEVICE_NAME} Boiler Ref",         f"{BASE_TOPIC}/settings/boiler",     "{{ value_json.ref|float }}",         "°C", "temperature", "measurement"),
+        "operation_mode":   (f"{DEVICE_NAME} Operation Mode",     f"{BASE_TOPIC}/settings/regulation", "{{ value_json.operation_mode|int }}", None, None, None),
+        "fixed_power":      (f"{DEVICE_NAME} Fixed Power",        f"{BASE_TOPIC}/settings/regulation", "{{ value_json.fixed_power|int }}",   "%",  None, "measurement"),
+        # optional abwählbar wie früher:
+        "boiler_pump_state":(f"{DEVICE_NAME} Boiler Pump",        f"{BASE_TOPIC}/operating",           "{{ value_json.boiler_pump_state|int }}", "", None, None),
+        "return_temp":      (f"{DEVICE_NAME} Return Temp",        f"{BASE_TOPIC}/operating",           "{{ value_json.return_temp|float }}", "°C", "temperature", "measurement"),
     }
 
-# ---------- SENSORS ----------
-def sensor(object_id: str, name: str, state_topic: str, value_template: str,
-           unit: str = None, device_class: str = None, icon: str = None, state_class: str = None) -> Dict[str, Any]:
-    p: Dict[str, Any] = {
-        "name": name,
-        "uniq_id": object_id,
-        "state_topic": state_topic,
-        "value_template": value_template,
-        "device": DEVICE
-    }
-    if unit:
-        p["unit_of_measurement"] = unit
-    if device_class:
-        p["device_class"] = device_class
-    if icon:
-        p["icon"] = icon
-    if state_class:
-        p["state_class"] = state_class
-    return p
-
-def build_sensors() -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
-
-    if "room_temp" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_room_temp",
-                      sensor(f"{DEVICE_ID}_room_temp", f"{DEVICE_NAME} Room Temperature",
-                             f"{BASE_TOPIC}/status", "{{ value_json.room_temp|float }}",
-                             "°C", "temperature", None, "measurement")))
-
-    if "boiler_temp" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_boiler_temp",
-                      sensor(f"{DEVICE_ID}_boiler_temp", f"{DEVICE_NAME} Boiler Temperature",
-                             f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp|float }}",
-                             "°C", "temperature", None, "measurement")))
-
-    if "state_super" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_state_super",
-                      sensor(f"{DEVICE_ID}_state_super", f"{DEVICE_NAME} State Super",
-                             f"{BASE_TOPIC}/status", "{{ value_json.state_super|int }}",
-                             None, None, "mdi:fire")))
-
-    if "boiler_ref" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_boiler_ref",
-                      sensor(f"{DEVICE_ID}_boiler_ref", f"{DEVICE_NAME} Boiler Ref",
-                             f"{BASE_TOPIC}/settings/boiler", "{{ value_json.ref|float }}",
-                             "°C", "temperature", None, "measurement")))
-
-    if "operation_mode" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_operation_mode",
-                      sensor(f"{DEVICE_ID}_operation_mode", f"{DEVICE_NAME} Operation Mode",
-                             f"{BASE_TOPIC}/settings/regulation", "{{ value_json.operation_mode|int }}")))
-
-    if "fixed_power" not in EXCLUDE_SET:
-        items.append(("sensor", f"{DEVICE_ID}_fixed_power",
-                      sensor(f"{DEVICE_ID}_fixed_power", f"{DEVICE_NAME} Fixed Power",
-                             f"{BASE_TOPIC}/settings/regulation", "{{ value_json.fixed_power|int }}",
-                             "%")))
-    return items
+    for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():
+        if key.lower() in EXCLUDE:
+            continue
+        payload = {"name": name, "stat_t": stat_t, "val_tpl": val_tpl}
+        if unit:     payload["unit_of_meas"] = unit
+        if dev_cla:  payload["dev_cla"] = dev_cla
+        if stat_cla: payload["stat_cla"] = stat_cla
+        publish_entity(client, "sensor", key, payload)
 
 def main():
-    c = mqtt_connect()
-    c.loop_start()
+    print(f"[discovery] connect mqtt host={MQTT_HOST} port={MQTT_PORT} user={'<set>' if MQTT_USER else '<none>'}")
+    print(f"[discovery] discovery_prefix={DISCOVERY_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE_TOPIC}")
+    print(f"[discovery] exclude={sorted(EXCLUDE)}")
 
-    # Climate
-    publish_config(c, disc_topic("climate", DEVICE_ID), build_climate_payload())
+    client = client_connect()
 
-    # Switch (Heizbetrieb)
-    publish_config(c, disc_topic("switch", f"{DEVICE_ID}_heating"), build_switch_payload())
+    # Entities publishen (retain)
+    publish_climate(client)
+    publish_switch(client)
+    publish_number_force_auger(client)
+    publish_sensors(client)
 
-    # Force Auger
-    publish_config(c, disc_topic("number", f"{DEVICE_ID}_force_auger"), build_force_auger_payload())
-
-    # Sensors
-    for kind, object_id, payload in build_sensors():
-        publish_config(c, disc_topic(kind, object_id), payload)
-
-    time.sleep(0.3)
-    c.loop_stop()
-    c.disconnect()
-    print("[discovery] climate, switch, number, sensors published.")
+    client.loop_start()
+    time.sleep(0.5)
+    client.loop_stop()
+    client.disconnect()
+    print("[discovery] done")
 
 if __name__ == "__main__":
     main()
