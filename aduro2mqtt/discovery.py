@@ -112,11 +112,11 @@ def publish_climate(client):
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
         # ---- Presets (DOKU-konform) ----
-        "preset_modes": ["Temperature", "10", "50", "100"],
-        "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
-        "preset_mode_command_template": preset_cmd,
-        "preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
-        "preset_mode_value_template": preset_tpl,
+        #"preset_modes": ["Temperature", "10", "50", "100"],
+        #"preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
+        #"preset_mode_command_template": preset_cmd,
+        #"preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
+        #"preset_mode_value_template": preset_tpl,
 
         # Zieltemperatur (bewährter Pfad)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
