@@ -43,7 +43,7 @@ export MQTT_BROKER_PASSWORD="${MQTT_PASSWORD}"
 export MQTT_BROKER_CLIENT_ID="${MQTT_CLIENT_ID}"
 
 if [ "${DISCOVERY_ENABLE}" = "true" ] || [ "${DISCOVERY_ENABLE}" = "True" ]; then
-  /opt/venv/bin/python /opt/aduro2mqtt/discovery.py || echo "[WARN] Discovery failed (continuing)"
+  /opt/venv/bin/python /opt/discovery.py || echo "[WARN] Discovery failed (continuing)"
 fi
 
 BACKOFF=5
