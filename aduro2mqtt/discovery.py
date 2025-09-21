@@ -62,14 +62,16 @@ def publish_climate(client):
         "{{\"path\":\"regulation.fixed_power\",\"value\":100}}"
         "{% endif %}"
     )
+    # Wichtig: *_value_template (nicht *_state_template)
     preset_val = (
-        "{{ 'Temperature' if (value_json.operation_mode|int) == 1 else ((value_json.fixed_power|int) ~ '') }}"
+        "{{ 'Temperature' if (value_json.operation_mode|int) == 1 "
+        "else ((value_json.fixed_power|int) ~ '') }}"
     )
 
     payload = {
         "name": DEVICE_NAME,
 
-        # Nur gültige HVAC-Modi!
+        # gültige HVAC-Modi
         "modes": ["off", "heat"],
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
         "mode_command_template":
@@ -78,14 +80,14 @@ def publish_climate(client):
         "mode_state_topic": f"{DEVICE_PREFIX}/status",
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
-        # Presets für Temperatur-/Powerbetrieb
+        # Presets für Temperatur / feste Leistung
         "preset_modes": ["Temperature", "10", "50", "100"],
         "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
         "preset_mode_command_template": preset_cmd,
         "preset_mode_state_topic": f"{DEVICE_PREFIX}/settings/regulation",
         "preset_mode_value_template": preset_val,
 
-        # Zieltemperatur
+        # Zieltemperatur (bewährter Pfad)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
@@ -100,7 +102,8 @@ def publish_climate(client):
         "max_temp": 35,
         "temp_step": 1
     }
-    publish_entity_short(client, payload)
+    publish_entity_full(client, payload)
+
 
 # ---------- SWITCH (Heizbetrieb) ----------
 def publish_switch(client):
@@ -118,7 +121,7 @@ def publish_switch(client):
         "icon": "mdi:radiator",
         "opt": True
     }
-    publish_entity_short(client, "switch", "heating", payload)
+    publish_entity_full(client, "switch", "heating", payload)
 
 # ---------- SWITCH (fixed_power) ----------
 def publish_fixed_power(client):
@@ -130,7 +133,7 @@ def publish_fixed_power(client):
         "val_tpl": "{{ value_json.fixed_power | int }}",
         "options": ["10","50","100"],
     }
-    publish_entity_short(client, "select", "fixed_power", payload)
+    publish_entity_full(client, "select", "fixed_power", payload)
 
 # ---------- NUMBER (Force Auger) ----------
 def publish_number_force_auger(client):
@@ -143,7 +146,7 @@ def publish_number_force_auger(client):
         "min": 0, "max": 120, "step": 5,
         "mode": "slider"
     }
-    publish_entity_short(client, "number", "force_auger", payload)
+    publish_entity_full(client, "number", "force_auger", payload)
 
 # ---------- SENSORS (ohne boiler_temp & outdoor_temp) ----------
 def publish_sensors(client):
@@ -173,7 +176,7 @@ def publish_sensors(client):
         if unit:     payload["unit_of_meas"] = unit
         if dev_cla:  payload["dev_cla"] = dev_cla
         if stat_cla: payload["stat_cla"] = stat_cla
-        publish_entity_short(client, "sensor", key, payload)
+        publish_entity_full(client, "sensor", key, payload)
 
 def main():
     print(f"[discovery] mqtt={MQTT_HOST}:{MQTT_PORT} user={'<set>' if MQTT_USER else '<none>'}")
