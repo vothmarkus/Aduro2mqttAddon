@@ -81,20 +81,16 @@ def publish_entity_full(client, payload):
     print(f"[discovery] published climate -> {disc}")
 
 def publish_climate(client):
-    # Preset-Commands (Temperaturregelung vs. feste Leistung)
+    # Preset → Befehl
     preset_cmd = (
         "{% if value == 'Temperature' %}"
         "{{\"path\":\"regulation.operation_mode\",\"value\":1}}"
-        "{% elif value == '10' %}"
-        "{{\"path\":\"regulation.fixed_power\",\"value\":10}}"
-        "{% elif value == '50' %}"
-        "{{\"path\":\"regulation.fixed_power\",\"value\":50}}"
-        "{% elif value == '100' %}"
-        "{{\"path\":\"regulation.fixed_power\",\"value\":100}}"
+        "{% else %}"
+        "{{\"path\":\"regulation.fixed_power\",\"value\": (value|int) }}"
         "{% endif %}"
     )
-    # Aus STATUS lesen; Punkt-Keys via Index!
-    preset_tpl = (
+    # Preset ← Status  (Punkt-Key via Index!)
+    preset_val = (
         "{{ 'Temperature' if (value_json.operation_mode|int) == 1 "
         "else ((value_json['regulation.fixed_power']|int) ~ '') }}"
     )
@@ -102,7 +98,7 @@ def publish_climate(client):
     payload = {
         "name": DEVICE_NAME,
 
-        # nur gültige HVAC-Modi (sonst verwirft HA die Entity)
+        # nur gültige HVAC-Modes
         "modes": ["off", "heat"],
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
         "mode_command_template":
@@ -112,48 +108,29 @@ def publish_climate(client):
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
         # ---- Presets (DOKU-konform) ----
-        #"preset_modes": ["Temperature", "10", "50", "100"],
-        #"preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
-        #"preset_mode_command_template": preset_cmd,
-        #"preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
-        #"preset_mode_value_template": preset_tpl,
+        "preset_modes": ["Temperature","10","50","100"],
+        "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
+        "preset_mode_command_template": preset_cmd,
+        "preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
+        "preset_mode_value_template": preset_val,
 
-        # Zieltemperatur (bewährter Pfad)
+        # Solltemp (bewährt)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
         "temperature_state_template": "{{ value_json.boiler_ref|float }}",
 
-        # Ist-Temperatur
+        # Isttemp
         "current_temperature_topic": f"{DEVICE_PREFIX}/status",
         "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
 
-        # Limits/Step wie gewünscht
         "temperature_unit": "C",
         "min_temp": 5,
         "max_temp": 35,
         "temp_step": 1
     }
     publish_entity_full(client, payload)
-
-# ---------- SWITCH (Heizbetrieb) ----------
-def publish_switch(client):
-    payload = {
-        "name": f"{DEVICE_NAME} Heating",
-        "cmd_t": f"{BASE_TOPIC}/set",
-        "cmd_tpl":
-            "{% if value in ['ON','on','true','True',1] %}"
-            "{\"path\":\"misc.start\",\"value\":\"1\"}"
-            "{% else %}"
-            "{\"path\":\"misc.stop\",\"value\":\"1\"}"
-            "{% endif %}",
-        "stat_t": f"{BASE_TOPIC}/status",
-        "val_tpl": "{{ 'ON' if (value_json.state_super|int) == 1 else 'OFF' }}",
-        "icon": "mdi:radiator",
-        "opt": True
-    }
-    publish_entity_short(client, "switch", "heating", payload)
-
+    
 # ---------- SWITCH (fixed_power) ----------
 def publish_fixed_power(client):
     payload = {
