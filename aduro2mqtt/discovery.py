@@ -3,21 +3,21 @@
 """
 Aduro2mqttAddon MQTT Discovery
 
-- climate (hvac_modes: off/heat) + preset_modes:
+- climate (hvac_modes: off/heat) mit preset_modes:
     "Temperature" -> regulation.operation_mode = 1
     "Power 10/50/100" -> regulation.fixed_power = 10/50/100
   target temperature: boiler.ref  (STATE: settings/boiler.ref)
-  current temperature: room_temp (fallback boiler_temp)
+  current temperature: room_temp (Fallback: boiler_temp)
 
 - switch: Heating (ON→misc.start / OFF→misc.stop), STATE aus status.state_super
-
 - number: Force Auger (s)
-
 - sensors (mit optionalem DISCOVERY_EXCLUDE, komma-separiert):
   room_temp, boiler_temp, state_super, boiler_ref, operation_mode, fixed_power
 """
 
-import os, json, time
+import os
+import json
+import time
 from typing import Dict, Any, List
 import paho.mqtt.client as mqtt
 
@@ -57,7 +57,7 @@ def mqtt_connect() -> mqtt.Client:
 
 def publish_config(client: mqtt.Client, topic: str, payload: Dict[str, Any]) -> None:
     payload.setdefault("device", DEVICE)
-    # Beides setzen – manche Setups schauen auf unique_id, Discovery braucht eigentlich uniq_id
+    # Beides setzen – manche Frontends zeigen auf unique_id
     if "uniq_id" in payload and "unique_id" not in payload:
         payload["unique_id"] = payload["uniq_id"]
     j = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -111,7 +111,7 @@ def build_climate_payload() -> Dict[str, Any]:
         "temperature_unit": "C",
         "min_temp": 10,
         "max_temp": 30,
-        "temp_step": 0.5,
+        "temp_step": 0.5
     }
 
 # ---------- SWITCH (Heizbetrieb EIN/AUS) ----------
@@ -129,7 +129,7 @@ def build_switch_payload() -> Dict[str, Any]:
         ),
         "state_topic": f"{BASE_TOPIC}/status",
         "value_template": "{{ 'ON' if (value_json.state_super|int) == 1 else 'OFF' }}",
-        "icon": "mdi:radiator",
+        "icon": "mdi:radiator"
     }
 
 # ---------- NUMBER (Force Auger) ----------
@@ -141,24 +141,89 @@ def build_force_auger_payload() -> Dict[str, Any]:
         "command_template": "{\"path\":\"auger.forced_run\",\"value\": {{ value|int }} }",
         "state_topic": f"{BASE_TOPIC}/settings/auger",
         "value_template": "{{ value_json.forced_run|int if value_json.forced_run is defined else 0 }}",
-        "min": 0, "max": 120, "step": 5,
+        "min": 0, "max": 120, "step": 5
     }
 
 # ---------- SENSORS ----------
 def sensor(object_id: str, name: str, state_topic: str, value_template: str,
            unit: str = None, device_class: str = None, icon: str = None, state_class: str = None) -> Dict[str, Any]:
-    p = {
+    p: Dict[str, Any] = {
         "name": name,
         "uniq_id": object_id,
         "state_topic": state_topic,
         "value_template": value_template,
-        "device": DEVICE,
+        "device": DEVICE
     }
-    if unit: p["unit_of_measurement"] = unit
-    if device_class: p["device_class"] = device_class
-    if icon: p["icon"] = icon
-    if state_class: p["state_class"] = state_class
+    if unit:
+        p["unit_of_measurement"] = unit
+    if device_class:
+        p["device_class"] = device_class
+    if icon:
+        p["icon"] = icon
+    if state_class:
+        p["state_class"] = state_class
     return p
 
 def build_sensors() -> List[Dict[str, Any]]:
-    items =
+    items: List[Dict[str, Any]] = []
+
+    if "room_temp" not in EXCLUDE_SET:
+        items.append(("sensor", f"{DEVICE_ID}_room_temp",
+                      sensor(f"{DEVICE_ID}_room_temp", f"{DEVICE_NAME} Room Temperature",
+                             f"{BASE_TOPIC}/status", "{{ value_json.room_temp|float }}",
+                             "°C", "temperature", None, "measurement")))
+
+    if "boiler_temp" not in EXCLUDE_SET:
+        items.append(("sensor", f"{DEVICE_ID}_boiler_temp",
+                      sensor(f"{DEVICE_ID}_boiler_temp", f"{DEVICE_NAME} Boiler Temperature",
+                             f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp|float }}",
+                             "°C", "temperature", None, "measurement")))
+
+    if "state_super" not in EXCLUDE_SET:
+        items.append(("sensor", f"{DEVICE_ID}_state_super",
+                      sensor(f"{DEVICE_ID}_state_super", f"{DEVICE_NAME} State Super",
+                             f"{BASE_TOPIC}/status", "{{ value_json.state_super|int }}",
+                             None, None, "mdi:fire")))
+
+    if "boiler_ref" not in EXCLUDE_SET:
+        items.append(("sensor", f"{DEVICE_ID}_boiler_ref",
+                      sensor(f"{DEVICE_ID}_boiler_ref", f"{DEVICE_NAME} Boiler Ref",
+                             f"{BASE_TOPIC}/settings/boiler", "{{ value_json.ref|float }}",
+                             "°C", "temperature", None, "measurement")))
+
+    if "operation_mode" not in EXCLUDE_SET:
+        items.append(("sensor", f"{DEVICE_ID}_operation_mode",
+                      sensor(f"{DEVICE_ID}_operation_mode", f"{DEVICE_NAME} Operation Mode",
+                             f"{BASE_TOPIC}/settings/regulation", "{{ value_json.operation_mode|int }}")))
+
+    if "fixed_power" not in EXCLUDE_SET:
+        items.append(("sensor", f"{DEVICE_ID}_fixed_power",
+                      sensor(f"{DEVICE_ID}_fixed_power", f"{DEVICE_NAME} Fixed Power",
+                             f"{BASE_TOPIC}/settings/regulation", "{{ value_json.fixed_power|int }}",
+                             "%")))
+    return items
+
+def main():
+    c = mqtt_connect()
+    c.loop_start()
+
+    # Climate
+    publish_config(c, disc_topic("climate", DEVICE_ID), build_climate_payload())
+
+    # Switch (Heizbetrieb)
+    publish_config(c, disc_topic("switch", f"{DEVICE_ID}_heating"), build_switch_payload())
+
+    # Force Auger
+    publish_config(c, disc_topic("number", f"{DEVICE_ID}_force_auger"), build_force_auger_payload())
+
+    # Sensors
+    for kind, object_id, payload in build_sensors():
+        publish_config(c, disc_topic(kind, object_id), payload)
+
+    time.sleep(0.3)
+    c.loop_stop()
+    c.disconnect()
+    print("[discovery] climate, switch, number, sensors published.")
+
+if __name__ == "__main__":
+    main()
