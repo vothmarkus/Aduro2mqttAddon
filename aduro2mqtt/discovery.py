@@ -1,91 +1,130 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Aduro2mqttAddon MQTT Discovery publisher
+
+Publishes (retain) the following Home Assistant discovery entities:
+  A) Select: "Power / Temp" with options ["10","50","100","Fixed Temp"]
+     - "Fixed Temp" -> sets regulation.operation_mode = 1 (temperature regulation)
+     - numeric values -> sets regulation.fixed_power
+  B) Climate: modes off/heat; target = boiler.ref; current temp = room_temp fallback boiler_temp
+  C) Number (optional): Force Auger seconds (0..120 step 5)
+"""
 import json, os, time
 import paho.mqtt.client as mqtt
 
+# From run.sh / Add-on config
 DISCOVERY_PREFIX = os.getenv("DISCOVERY_PREFIX", "homeassistant").strip()
 BASE_TOPIC       = os.getenv("BASE_TOPIC", "aduro2mqtt").strip()
 DEVICE_NAME      = os.getenv("DEVICE_NAME", "Aduro H2").strip()
 DEVICE_ID        = os.getenv("DEVICE_ID", "aduro_h2").strip()
+
 MQTT_HOST        = os.getenv("MQTT_HOST", "core-mosquitto").strip()
 MQTT_PORT        = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER        = os.getenv("MQTT_USER")
 MQTT_PASSWORD    = os.getenv("MQTT_PASSWORD")
-EXCLUDE_RAW      = os.getenv("DISCOVERY_EXCLUDE", "boiler_pump_state,return_temp")
-EXCLUDE = set(e.strip().lower() for e in EXCLUDE_RAW.split(",") if e.strip())
 
-def client_connect() -> mqtt.Client:
+# Aduro H2 temperature mode id
+TEMP_MODE_VALUE  = 1
+
+DEVICE = {
+    "identifiers": [DEVICE_ID],
+    "name": DEVICE_NAME,
+    "manufacturer": "Aduro",
+    "model": "via aduro2mqtt"
+}
+
+def disc_topic(kind: str, object_id: str) -> str:
+    if kind == "climate":
+        return f"{DISCOVERY_PREFIX}/{kind}/{DEVICE_ID}/config"
+    return f"{DISCOVERY_PREFIX}/{kind}/{DEVICE_ID}_{object_id}/config"
+
+def mqtt_connect() -> mqtt.Client:
     client = mqtt.Client(client_id=f"{DEVICE_ID}_disc")
     if MQTT_USER:
         client.username_pw_set(MQTT_USER, MQTT_PASSWORD or "")
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
     return client
 
-def disc_topic(kind: str, object_id: str) -> str:
-    return f"{DISCOVERY_PREFIX}/{kind}/{DEVICE_ID}_{object_id}/config"
+def publish(client: mqtt.Client, topic: str, payload: dict) -> None:
+    payload.setdefault("device", DEVICE)
+    payload.setdefault("unique_id", payload.get("uniq_id", f"{DEVICE_ID}_{int(time.time())}"))
+    if topic.endswith("/climate/" + DEVICE_ID + "/config"):
+        payload["unique_id"] = f"{DEVICE_ID}_climate"
+    client.publish(topic, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), qos=1, retain=True)
 
-def device_payload():
-    return {"ids": [DEVICE_ID], "name": DEVICE_NAME, "mf": "Aduro", "mdl": "via aduro2mqtt"}
+def publish_select(client: mqtt.Client):
+    topic = disc_topic("select", "power")
+    cmd_tpl = (
+        "{% if value == 'Fixed Temp' %}"
+        "{{\"path\":\"regulation.operation_mode\",\"value\":" + str(TEMP_MODE_VALUE) + "}}"
+        "{% else %}"
+        "{{\"path\":\"regulation.fixed_power\",\"value\": {{ value|int }} }}"
+        "{% endif %}"
+    )
+    val_tpl = (
+        "{{ 'Fixed Temp' if (value_json.operation_mode|int) == " + str(TEMP_MODE_VALUE) +
+        " else ((value_json.fixed_power|int) ~ '') }}"
+    )
+    payload = {
+        "name": f"{DEVICE_NAME} Power / Temp",
+        "uniq_id": f"{DEVICE_ID}_power",
+        "command_topic": f"{BASE_TOPIC}/set",
+        "command_template": cmd_tpl,
+        "state_topic": f"{BASE_TOPIC}/settings/regulation",
+        "value_template": val_tpl,
+        "options": ["10","50","100","Fixed Temp"],
+    }
+    publish(client, topic, payload)
 
-def publish_entity(client, kind, object_id, payload):
-    full = disc_topic(kind, object_id)
-    payload["uniq_id"] = f"{DEVICE_ID}_{object_id}"
-    payload["dev"] = device_payload()
-    client.publish(full, json.dumps(payload), retain=True)
+def publish_climate(client: mqtt.Client):
+    topic = disc_topic("climate", "")
+    payload = {
+        "name": DEVICE_NAME,
+        "uniq_id": f"{DEVICE_ID}_climate",
+        "modes": ["off", "heat"],
+        "mode_command_topic": f"{BASE_TOPIC}/set",
+        "mode_command_template": (
+            "{% if value == 'off' %}{\"path\":\"misc.stop\",\"value\":\"1\"}"
+            "{% else %}{\"path\":\"misc.start\",\"value\":\"1\"}{% endif %}"
+        ),
+        "mode_state_topic": f"{BASE_TOPIC}/status",
+        "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
+        "temperature_command_topic": f"{BASE_TOPIC}/set",
+        "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
+        "temperature_state_topic": f"{BASE_TOPIC}/operating",
+        "temperature_state_template": "{{ value_json.boiler_ref|float }}",
+        "current_temperature_topic": f"{BASE_TOPIC}/status",
+        "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
+        "temperature_unit": "C",
+        "min_temp": 10,
+        "max_temp": 30,
+        "temp_step": 0.5
+    }
+    publish(client, topic, payload)
+
+def publish_force_auger(client: mqtt.Client):
+    topic = disc_topic("number", "force_auger")
+    payload = {
+        "name": f"{DEVICE_NAME} Force Auger (s)",
+        "uniq_id": f"{DEVICE_ID}_force_auger",
+        "command_topic": f"{BASE_TOPIC}/set",
+        "command_template": "{\"path\":\"auger.forced_run\",\"value\": {{ value|int }} }",
+        "state_topic": f"{BASE_TOPIC}/settings/auger",
+        "value_template": "{{ value_json.forced_run|int if value_json.forced_run is defined else 0 }}",
+        "min": 0, "max": 120, "step": 5
+    }
+    publish(client, topic, payload)
 
 def main():
-    print(f"[discovery] connect mqtt host={MQTT_HOST} port={MQTT_PORT} user={'<set>' if MQTT_USER else '<none>'}")
-    print(f"[discovery] discovery_prefix={DISCOVERY_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE_TOPIC}")
-    print(f"[discovery] exclude={sorted(EXCLUDE)}")
-
-    client = client_connect()
-
-    # Switch
-    if "toggle" not in EXCLUDE and "aduro_h2_toggle" not in EXCLUDE:
-        publish_entity(client, "switch", "toggle", {
-            "name": f"{DEVICE_NAME} Toggle",
-            "cmd_t": f"{BASE_TOPIC}/set",
-            "pl_on":  json.dumps({"path": "misc.start", "value": "1"}),
-            "pl_off": json.dumps({"path": "misc.stop",  "value": "1"}),
-            "opt": True
-        })
-
-    # Select
-    if "fixed_power" not in EXCLUDE:
-        publish_entity(client, "select", "fixed_power", {
-            "name": f"{DEVICE_NAME} Fixed power (%)",
-            "cmd_t": f"{BASE_TOPIC}/set",
-            "cmd_tpl": '{"path": "regulation.fixed_power", "value": {{ value }} }',
-            "stat_t": f"{BASE_TOPIC}/settings/regulation",
-            "val_tpl": "{{ value_json.fixed_power | int }}",
-            "options": ["10","50","100"],
-        })
-
-    # Sensors
-    sensors = {
-        "room_temp":    (f"{DEVICE_NAME} Room Temp",   f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp }}", "°C", "temperature", "measurement"),
-        "shaft_temp":   (f"{DEVICE_NAME} Shaft Temp",  f"{BASE_TOPIC}/status", "{{ value_json.shaft_temp }}",  "°C", "temperature", "measurement"),
-        "smoke_temp":   (f"{DEVICE_NAME} Smoke Temp",  f"{BASE_TOPIC}/status", "{{ value_json.smoke_temp }}",  "°C", "temperature", "measurement"),
-        "total_hours":  (f"{DEVICE_NAME} Total Hours", f"{BASE_TOPIC}/consumption/counter", "{{ value_json[0] }}", "h", None, "total_increasing"),
-        "co":           (f"{DEVICE_NAME} Co",          f"{BASE_TOPIC}/status", "{{ value_json.drift.co | int }}", "ppm", None, "measurement"),
-        "oxygen":       (f"{DEVICE_NAME} Oxygen",      f"{BASE_TOPIC}/operating", "{{ value_json.oxygen }}", "%", None, "measurement"),
-        "power_pct":    (f"{DEVICE_NAME} Power Pct",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct }}", "%", None, "measurement"),
-        "exhaust_speed":(f"{DEVICE_NAME} Exhaust Speed", f"{BASE_TOPIC}/status", "{{ value_json.exhaust_speed }}", "", None, "measurement"),
-        # opt-out by default via config
-        "boiler_pump_state": (f"{DEVICE_NAME} Boiler Pump", f"{BASE_TOPIC}/operating", "{{ value_json.boiler_pump_state | int }}", "", None, None),
-        "return_temp":  (f"{DEVICE_NAME} Return Temp", f"{BASE_TOPIC}/operating", "{{ value_json.return_temp }}", "°C", "temperature", "measurement"),
-    }
-
-    for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():
-        if key.lower() in EXCLUDE:
-            continue
-        payload = {"name": name, "stat_t": stat_t, "val_tpl": val_tpl}
-        if unit: payload["unit_of_meas"] = unit
-        if dev_cla: payload["dev_cla"] = dev_cla
-        if stat_cla: payload["stat_cla"] = stat_cla
-        publish_entity(client, "sensor", key, payload)
-
+    print(f"[discovery] mqtt={MQTT_HOST}:{MQTT_PORT} user={'<set>' if MQTT_USER else '<none>'}")
+    print(f"[discovery] prefix={DISCOVERY_PREFIX} device={DEVICE_NAME}/{DEVICE_ID} base={BASE_TOPIC}")
+    client = mqtt_connect()
     client.loop_start()
-    time.sleep(0.5)
+    publish_select(client)
+    publish_climate(client)
+    publish_force_auger(client)
+    time.sleep(0.4)
     client.loop_stop()
     client.disconnect()
     print("[discovery] done")
