@@ -109,10 +109,10 @@ def publish_climate(client):
 
         # ---- Presets (DOKU-konform) ----
         "preset_modes": ["Temperature","10","50","100"],
-        "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
-        "preset_mode_command_template": preset_cmd,
-        "preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
-        "preset_mode_value_template": preset_val,
+        #"preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
+        #"preset_mode_command_template": preset_cmd,
+        #"preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
+        #"preset_mode_value_template": preset_val,
 
         # Solltemp (bewährt)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
@@ -130,7 +130,25 @@ def publish_climate(client):
         "temp_step": 1
     }
     publish_entity_full(client, payload)
-    
+
+# ---------- SWITCH (Heizbetrieb) ----------
+def publish_switch(client):
+    payload = {
+        "name": f"{DEVICE_NAME} Heating",
+        "cmd_t": f"{BASE_TOPIC}/set",
+        "cmd_tpl":
+            "{% if value in ['ON','on','true','True',1] %}"
+            "{\"path\":\"misc.start\",\"value\":\"1\"}"
+            "{% else %}"
+            "{\"path\":\"misc.stop\",\"value\":\"1\"}"
+            "{% endif %}",
+        "stat_t": f"{BASE_TOPIC}/status",
+        "val_tpl": "{{ 'ON' if (value_json.state_super|int) == 1 else 'OFF' }}",
+        "icon": "mdi:radiator",
+        "opt": True
+    }
+    publish_entity_short(client, "switch", "heating", payload)
+
 # ---------- SWITCH (fixed_power) ----------
 def publish_fixed_power(client):
     payload = {
