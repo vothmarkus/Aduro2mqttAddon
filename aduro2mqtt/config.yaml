@@ -1,5 +1,5 @@
 name: Aduro2MQTT
-version: 1.4.25
+version: 1.5.0
 slug: aduro2mqtt
 description: "MQTT bridge for Aduro H2 with Home Assistant Discovery."
 arch:
@@ -19,14 +19,15 @@ options:
   aduro_host: ""
   aduro_serial: ""
   aduro_pin: ""
-  aduro_poll_interval: 30
+  aduro_poll_interval: 15
   discovery_enable: true
   discovery_prefix: "homeassistant"
   device_name: "Aduro H2"
   device_id: "aduro_h2"
   discovery_exclude:
-    - boiler_pump_state
-    - return_temp
+    - state
+    - substate
+    - state_sec
   log_level: "INFO"
 schema:
   mqtt_host: str

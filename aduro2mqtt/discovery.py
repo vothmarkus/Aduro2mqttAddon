@@ -1,9 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import json, os, time
+"""
+Home Assistant MQTT Discovery for Aduro2MQTT
+
+- Climate (modes: off/heat/auto)
+  - off  -> send {"path":"misc.stop","value":"1"}
+  - heat -> send {"path":"misc.start","value":"1"}  and {"path":"regulation.operation_mode","value":0}
+  - auto -> send {"path":"misc.start","value":"1"}  and {"path":"regulation.operation_mode","value":1}
+  - current temp  : status.boiler_temp  (Raumtemperatur)
+  - target temp   : settings/boiler.temp  (Raum-Soll)
+- Select fixed_power (10/50/100)
+- Number force_auger
+- Button ignite (Zündung)
+- A few essential sensors
+
+Environment (vom Add-on gesetzt):
+  DISCOVERY_PREFIX (default "homeassistant")
+  BASE_TOPIC       (default "aduro2mqtt")
+  DEVICE_NAME      (default "Aduro H2")
+  DEVICE_ID        (default "aduro_h2")
+  MQTT_HOST        (default "core-mosquitto")
+  MQTT_PORT        (default 1883)
+  MQTT_USER / MQTT_USERNAME (optional)
+  MQTT_PASSWORD    (optional)
+  DISCOVERY_EXCLUDE (comma separated, case-insensitive)
+"""
+
+import json
+import os
+import time
 import paho.mqtt.client as mqtt
 
-# ---- ENV aus run.sh / Add-on-Optionen ----
+# ---- ENV / Defaults ----
 DISCOVERY_PREFIX = os.getenv("DISCOVERY_PREFIX", "homeassistant").strip()
 BASE_TOPIC       = os.getenv("BASE_TOPIC", "aduro2mqtt").strip()
 DEVICE_NAME      = os.getenv("DEVICE_NAME", "Aduro H2").strip()
@@ -14,13 +42,10 @@ MQTT_PORT        = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER        = os.getenv("MQTT_USER") or os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD    = os.getenv("MQTT_PASSWORD", "")
 
-# Für Basic-Climate
-DEVICE_PREFIX    = BASE_TOPIC
-
-# optionales Exclude (wie in run.sh)
 EXCLUDE_RAW      = os.getenv("DISCOVERY_EXCLUDE", "boiler_pump_state,return_temp")
 EXCLUDE          = set(e.strip().lower() for e in EXCLUDE_RAW.split(",") if e.strip())
 
+# ---- Helpers ----
 def client_connect() -> mqtt.Client:
     c = mqtt.Client(client_id=f"{DEVICE_ID}_disc")
     if MQTT_USER:
@@ -32,174 +57,158 @@ def disc_topic(kind: str, object_id: str) -> str:
     return f"{DISCOVERY_PREFIX}/{kind}/{DEVICE_ID}_{object_id}/config"
 
 def device_payload_full():
-    return {"identifiers":[DEVICE_ID],"name":DEVICE_NAME,"manufacturer":"Aduro","model":"via aduro2mqtt"}
+    return {
+        "identifiers": [DEVICE_ID],
+        "name": DEVICE_NAME,
+        "manufacturer": "Aduro",
+        "model": "via aduro2mqtt",
+    }
 
 def device_payload_short():
-    return {"ids":[DEVICE_ID],"name":DEVICE_NAME,"mf":"Aduro","mdl":"via aduro2mqtt"}
+    return {"ids": [DEVICE_ID], "name": DEVICE_NAME, "mf": "Aduro", "mdl": "via aduro2mqtt"}
 
-def publish_entity_short(client, kind, object_id, payload):
-    full = disc_topic(kind, object_id)
+def publish_entity_short(client, kind, object_id, payload: dict):
+    topic = disc_topic(kind, object_id)
+    payload = dict(payload)  # copy
     payload["uniq_id"] = f"{DEVICE_ID}_{object_id}"
     payload["dev"] = device_payload_short()
-    client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
-
-def publish_entity_full(client, payload):
-    full = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}/config"
-    payload["uniq_id"] = f"{DEVICE_ID}_climate"
-    payload["device"] = device_payload_full()
-    client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
-
-# ---------- CLIMATE ----------
-def publish_entity_full(client, payload):
-    # Climate bewusst unter .../climate/aduro_h2_climate/config veröffentlichen
-    full = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}_climate/config"
-    payload["uniq_id"] = f"{DEVICE_ID}_climate"
-    payload["device"] = {
-        "identifiers": [DEVICE_ID],
-        "name": DEVICE_NAME,
-        "manufacturer": "Aduro",
-        "model": "via aduro2mqtt",
-    }
-    client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
-    print(f"[discovery] published climate -> {full}")
-
-def publish_entity_full(client, payload):
-    # Climate bewusst unter .../climate/<DEVICE_ID>_climate/config veröffentlichen
-    disc = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}_climate/config"
-    # volle Device-Infos
-    device_full = {
-        "identifiers": [DEVICE_ID],
-        "name": DEVICE_NAME,
-        "manufacturer": "Aduro",
-        "model": "via aduro2mqtt",
-    }
-    # IDs doppelt setzen (kompatibel zu allen HA-Versionen)
-    payload["unique_id"] = f"{DEVICE_ID}_climate"
-    payload["uniq_id"]   = f"{DEVICE_ID}_climate"
-    payload["device"]    = device_full
-    client.publish(disc, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
-    print(f"[discovery] published climate -> {disc}")
+    client.publish(topic, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), qos=1, retain=True)
 
 def publish_climate(client):
-    # Preset → Befehl
-    preset_cmd = (
-        "{% if value == 'Temperature' %}"
-        "{{\"path\":\"regulation.operation_mode\",\"value\":1}}"
+    """
+    HVAC modes:
+      - 'off'  -> misc.stop
+      - 'heat' -> misc.start + operation_mode=0 (Fixed Power)
+      - 'auto' -> misc.start + operation_mode=1 (Temperature regulation)
+    mode_state_template nutzt STATUS (für An/Aus) + operation_mode (aus STATUS),
+    weil im Status JSON die Keys 'state', 'substate' und 'operation_mode' vorkommen.
+    """
+    topic = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}_climate/config"
+
+    mode_cmd_tpl = (
+        "{% if value == 'off' %}"
+        "{\"path\":\"misc.stop\",\"value\":\"1\"}"
+        "{% elif value == 'auto' %}"
+        "{\"path\":\"regulation.operation_mode\",\"value\":1}"
         "{% else %}"
-        "{{\"path\":\"regulation.fixed_power\",\"value\": (value|int) }}"
+        "{\"path\":\"regulation.operation_mode\",\"value\":0}"
         "{% endif %}"
     )
-    # Preset ← Status  (Punkt-Key via Index!)
-    preset_val = (
-        "{{ 'Temperature' if (value_json.operation_mode|int) == 1 "
-        "else ((value_json['regulation.fixed_power']|int) ~ '') }}"
+
+    # Wir senden *immer* auch Start, wenn nicht 'off' (damit der Ofen läuft)
+    mode_cmd_t = f"{BASE_TOPIC}/set"
+    mode_cmd_wrap = (
+        "{% if value == 'off' %}"
+        + mode_cmd_tpl +
+        "{% else %}"
+        "{\"multi\":["
+        + mode_cmd_tpl +
+        ", {\"path\":\"misc.start\",\"value\":\"1\"}"
+        "]}"
+        "{% endif %}"
     )
+
+    mode_state_tpl = """
+    {% set s  = (value_json.state|int) if ('state' in value_json) else 14 %}
+    {% set ss = (value_json.substate|int) if ('substate' in value_json) else 0 %}
+    {% if s == 14 and ss in [0,6] %}
+      off
+    {% else %}
+      {% if (value_json.operation_mode|int) == 1 %}
+        auto
+      {% else %}
+        heat
+      {% endif %}
+    {% endif %}
+    """
 
     payload = {
         "name": DEVICE_NAME,
+        "unique_id": f"{DEVICE_ID}_climate",
+        "device": device_payload_full(),
 
-        # gültige HVAC-Modes
-        "modes": ["off", "heat"],
-        "mode_command_topic": f"{DEVICE_PREFIX}/set",
-        "mode_command_template":
-            "{% if value == 'off' %}{\"path\":\"misc.stop\",\"value\":\"1\"}"
-            "{% else %}{\"path\":\"misc.start\",\"value\":\"1\"}{% endif %}",
-        "mode_state_topic": f"{DEVICE_PREFIX}/status",
-        "mode_state_template": """
-            {% set s = value_json.state|int %}
-            {% set ss = value_json.substate|int %}
-            {% if s == 14 and ss in [0,6] %}
-              off
-            {% elif s in [2,4,32,5] %}
-              heat
-            {% else %}
-              off
-            {% endif %}
-        """,
+        # HVAC modes & mapping
+        "modes": ["off", "heat", "auto"],
+        "mode_command_topic": mode_cmd_t,
+        "mode_command_template": mode_cmd_wrap,
+        "mode_state_topic": f"{BASE_TOPIC}/status",
+        "mode_state_template": mode_state_tpl,
 
-        # ---- Presets (DOKU-konform) ----
-        #"preset_modes": ["Temperature","10","50","100"],
-        #"preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
-        #"preset_mode_command_template": preset_cmd,
-        #"preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
-        #"preset_mode_value_template": preset_val,
-        
-        # Solltemp
-        "temperature_command_topic": f"{DEVICE_PREFIX}/set",
-        "temperature_command_template": "{\"path\":\"boiler_ref\",\"value\": {{ value|float }} }",
-        "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
-        "temperature_state_template": "{{ value_json.boiler_ref|float }}",
+        # Target temperature -> settings/boiler.temp
+        "temperature_command_topic": f"{BASE_TOPIC}/set",
+        "temperature_command_template": "{\"path\":\"boiler.temp\",\"value\": {{ value|float }} }",
+        "temperature_state_topic": f"{BASE_TOPIC}/settings/boiler",
+        "temperature_state_template": "{{ value_json.temp|float if value_json.temp is defined else value_json['temp']|float }}",
 
-        # Isttemp
-        "current_temperature_topic": f"{DEVICE_PREFIX}/status",
-        "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
+        # Current temperature -> status.boiler_temp (= Raumtemperatur)
+        "current_temperature_topic": f"{BASE_TOPIC}/status",
+        "current_temperature_template": "{{ (value_json.boiler_temp|float) if (value_json.boiler_temp is defined) else (value_json.room_temp|float) }}",
 
         "temperature_unit": "C",
         "min_temp": 5,
         "max_temp": 35,
-        "temp_step": 1
+        "temp_step": 1,
     }
-    publish_entity_full(client, payload)
 
+    client.publish(topic, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), qos=1, retain=True)
+    print(f"[discovery] published climate -> {topic}")
 
-# ---------- SWITCH (Heizbetrieb) ----------
-def publish_switch(client):
-    payload = {
-        "name": f"{DEVICE_NAME} Heating",
-        "cmd_t": f"{BASE_TOPIC}/set",
-        "cmd_tpl":
-            "{% if value in ['ON','on','true','True',1] %}"
-            "{\"path\":\"misc.start\",\"value\":\"1\"}"
-            "{% else %}"
-            "{\"path\":\"misc.stop\",\"value\":\"1\"}"
-            "{% endif %}",
-        "stat_t": f"{BASE_TOPIC}/status",
-        "val_tpl": """
-            {% set s = value_json.state|int %}
-            {% set ss = value_json.substate|int %}
-            {% if s == 14 and ss in [0,6] %}
-              OFF
-            {% else %}
-              ON
-            {% endif %}
-        """,
-        "icon": "mdi:radiator",
-        "opt": False   # nicht optimistisch, nur echte Rückmeldung zählt
-    }
-    publish_entity_short(client, "switch", "heating", payload)
-
-# ---------- SWITCH (fixed_power) ----------
-def publish_fixed_power(client):
+def publish_select_fixed_power(client):
     payload = {
         "name": f"{DEVICE_NAME} Fixed power (%)",
         "cmd_t": f"{BASE_TOPIC}/set",
-        "cmd_tpl": '{"path": "regulation.fixed_power", "value": {{ value }} }',
+        "cmd_tpl": "{\"path\":\"regulation.fixed_power\",\"value\": {{ value|int }} }",
         "stat_t": f"{BASE_TOPIC}/settings/regulation",
         "val_tpl": "{{ value_json.fixed_power | int }}",
-        "options": ["10","50","100"],
+        "options": ["10", "50", "100"],
+        "icon": "mdi:percent",
     }
     publish_entity_short(client, "select", "fixed_power", payload)
 
-# ---------- NUMBER (Force Auger) ----------
 def publish_number_force_auger(client):
     payload = {
-        "name": f"{DEVICE_NAME} Force Auger (in s)",
+        "name": f"{DEVICE_NAME} Force Auger (s)",
         "cmd_t": f"{BASE_TOPIC}/set",
         "cmd_tpl": "{\"path\":\"auger.forced_run\",\"value\": {{ value|int }} }",
         "stat_t": f"{BASE_TOPIC}/settings/auger",
         "val_tpl": "{{ value_json.forced_run|int if value_json.forced_run is defined else 0 }}",
         "min": 0, "max": 120, "step": 5,
-        "mode": "slider"
+        "mode": "slider",
+        "icon": "mdi:rotate-right",
     }
     publish_entity_short(client, "number", "force_auger", payload)
 
-# ---------- SENSORS (ohne boiler_temp & outdoor_temp) ----------
+def publish_button_ignite(client):
+    payload = {
+        "name": f"{DEVICE_NAME} Zündung",
+        "cmd_t": f"{BASE_TOPIC}/set",
+        "cmd_tpl": "{\"path\":\"misc.start\",\"value\":\"1\"}",
+        "icon": "mdi:fire",
+    }
+    publish_entity_short(client, "button", "ignite", payload)
+
 def publish_sensors(client):
     sensors = {
-        "room_temp":   (f"{DEVICE_NAME} Room Temp", f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
-        "smoke_temp":  (f"{DEVICE_NAME} Smoke Temp", f"{BASE_TOPIC}/status", "{{ value_json.smoke_temp|float }}", "°C", "temperature", "measurement"),
-        # neuer Text-Sensor für State
-        "state_txt":   (
+        # Anzeigename, Topic, Value-Template, Einheit, device_class, state_class
+        "room_temp": (
+            f"{DEVICE_NAME} Room Temp",
+            f"{BASE_TOPIC}/status",
+            "{{ value_json.boiler_temp|float }}",
+            "°C", "temperature", "measurement",
+        ),
+        "smoke_temp": (
+            f"{DEVICE_NAME} Smoke Temp",
+            f"{BASE_TOPIC}/status",
+            "{{ value_json.smoke_temp|float }}",
+            "°C", "temperature", "measurement",
+        ),
+        "power_pct": (
+            f"{DEVICE_NAME} Power",
+            f"{BASE_TOPIC}/status",
+            "{{ value_json.power_pct|float }}",
+            "%", None, "measurement",
+        ),
+        "state_txt": (
             f"{DEVICE_NAME} State",
             f"{BASE_TOPIC}/status",
             """
@@ -218,12 +227,14 @@ def publish_sensors(client):
             {% else %}Unbekannt ({{ s }})
             {% endif %}
             """,
-            None, None, None
+            None, None, None,
         ),
-        "state":       (f"{DEVICE_NAME} State Nr",       f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",    None, None, None),
-        "substate":    (f"{DEVICE_NAME} Substate Nr",    f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}", None, None, None),
-        "state_sec":   (f"{DEVICE_NAME} State Time",   f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}","s", None, "measurement"),
-        "power_pct":   (f"{DEVICE_NAME} Power",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
+        "co_sensor": (
+            f"{DEVICE_NAME} CO",
+            f"{BASE_TOPIC}/status",
+            "{{ value_json['drift.co'] | default(value_json.co, true) | int }}",
+            None, None, "measurement",
+        ),
     }
 
     for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():
@@ -242,12 +253,14 @@ def main():
 
     client = client_connect()
 
+    # Publish all discovery entities
     publish_climate(client)
-    publish_switch(client)
-    publish_fixed_power(client)
+    publish_select_fixed_power(client)
     publish_number_force_auger(client)
+    publish_button_ignite(client)
     publish_sensors(client)
 
+    # Flush and disconnect
     client.loop_start()
     time.sleep(0.5)
     client.loop_stop()
