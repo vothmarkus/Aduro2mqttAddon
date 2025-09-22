@@ -98,14 +98,24 @@ def publish_climate(client):
     payload = {
         "name": DEVICE_NAME,
 
-        # nur gültige HVAC-Modes
+        # gültige HVAC-Modes
         "modes": ["off", "heat"],
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
         "mode_command_template":
             "{% if value == 'off' %}{\"path\":\"misc.stop\",\"value\":\"1\"}"
             "{% else %}{\"path\":\"misc.start\",\"value\":\"1\"}{% endif %}",
         "mode_state_topic": f"{DEVICE_PREFIX}/status",
-        "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
+        "mode_state_template": """
+            {% set s = value_json.state|int %}
+            {% set ss = value_json.substate|int %}
+            {% if s == 14 and ss in [0,6] %}
+              off
+            {% elif s in [2,4,32,5] %}
+              heat
+            {% else %}
+              off
+            {% endif %}
+        """,
 
         # ---- Presets (DOKU-konform) ----
         #"preset_modes": ["Temperature","10","50","100"],
@@ -113,8 +123,8 @@ def publish_climate(client):
         #"preset_mode_command_template": preset_cmd,
         #"preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
         #"preset_mode_value_template": preset_val,
-
-        # Solltemp (bewährt)
+        
+        # Solltemp
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
         "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
@@ -130,6 +140,7 @@ def publish_climate(client):
         "temp_step": 1
     }
     publish_entity_full(client, payload)
+
 
 # ---------- SWITCH (Heizbetrieb) ----------
 def publish_switch(client):
@@ -164,7 +175,7 @@ def publish_fixed_power(client):
 # ---------- NUMBER (Force Auger) ----------
 def publish_number_force_auger(client):
     payload = {
-        "name": f"{DEVICE_NAME} Force Auger (s)",
+        "name": f"{DEVICE_NAME} Force Auger (in s)",
         "cmd_t": f"{BASE_TOPIC}/set",
         "cmd_tpl": "{\"path\":\"auger.forced_run\",\"value\": {{ value|int }} }",
         "stat_t": f"{BASE_TOPIC}/settings/auger",
@@ -193,7 +204,7 @@ def publish_sensors(client):
               {% endif %}
             {% elif s == 2 %}Zündung eingeleitet
             {% elif s == 4 %}Zündung verlängert
-            {% elif s == 32 %}Betrieb, Ofen heizt an
+            {% elif s == 32 %}Betrieb, Aufheizen
             {% elif s == 5 %}Betrieb, Normal
             {% elif s == 0 %}Betrieb, Warten
             {% else %}Unbekannt ({{ s }})
@@ -201,10 +212,10 @@ def publish_sensors(client):
             """,
             None, None, None
         ),
-        "state":       (f"{DEVICE_NAME} StateNr",       f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",    None, None, None),
-        "substate":    (f"{DEVICE_NAME} SubstateNr",    f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}", None, None, None),
-        "state_sec":   (f"{DEVICE_NAME} State Sec",   f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}","s", None, "measurement"),
-        "power_pct":   (f"{DEVICE_NAME} Power Pct",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
+        "state":       (f"{DEVICE_NAME} State Nr",       f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",    None, None, None),
+        "substate":    (f"{DEVICE_NAME} Substate Nr",    f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}", None, None, None),
+        "state_sec":   (f"{DEVICE_NAME} State Time",   f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}","s", None, "measurement"),
+        "power_pct":   (f"{DEVICE_NAME} Power",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
     }
 
     for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():
