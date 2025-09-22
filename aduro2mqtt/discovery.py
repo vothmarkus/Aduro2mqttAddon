@@ -108,7 +108,7 @@ def publish_climate(client):
         "mode_state_template": "{{ 'heat' if (value_json.state_super|int) == 1 else 'off' }}",
 
         # ---- Presets (DOKU-konform) ----
-        "preset_modes": ["Temperature","10","50","100"],
+        #"preset_modes": ["Temperature","10","50","100"],
         #"preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
         #"preset_mode_command_template": preset_cmd,
         #"preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
@@ -177,22 +177,34 @@ def publish_number_force_auger(client):
 # ---------- SENSORS (ohne boiler_temp & outdoor_temp) ----------
 def publish_sensors(client):
     sensors = {
-        # „Room Temp“ robust aus boiler_temp (nur Anzeigezweck)
         "room_temp":   (f"{DEVICE_NAME} Room Temp", f"{BASE_TOPIC}/status", "{{ value_json.boiler_temp|float }}", "°C", "temperature", "measurement"),
-        "smoke_temp":  (f"{DEVICE_NAME} Smoke Temp",  f"{BASE_TOPIC}/status", "{{ value_json.smoke_temp|float }}", "°C", "temperature", "measurement"),
-        "state":       (f"{DEVICE_NAME} State",       f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",       None, None, None),
-        "state_sec":   (f"{DEVICE_NAME} State Sec",   f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}",   "s",  None, "measurement"),
-        "state_super": (f"{DEVICE_NAME} State Super", f"{BASE_TOPIC}/status", "{{ value_json.state_super|int }}", None, None, None),
-        "substate":    (f"{DEVICE_NAME} Substate",    f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}",    None, None, None),
-        "substate_sec":(f"{DEVICE_NAME} Substate Sec",f"{BASE_TOPIC}/status", "{{ value_json.substate_sec|int }}","s",  None, "measurement"),
-        "operation_mode": (f"{DEVICE_NAME} Operation Mode", f"{BASE_TOPIC}/status", "{{ value_json.operation_mode|int }}", None, None, None),
-        "oxygen":      (f"{DEVICE_NAME} Oxygen",      f"{BASE_TOPIC}/status", "{{ value_json.oxygen|float }}", "%", None, "measurement"),
-        "power_pct":   (f"{DEVICE_NAME} Power Pct",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}", "%", None, "measurement"),
-        "exhaust_speed": (f"{DEVICE_NAME} Exhaust Speed", f"{BASE_TOPIC}/status", "{{ value_json.exhaust_speed|float }}", "", None, "measurement"),
-
-        # optional via EXCLUDE:
-        "boiler_pump_state": (f"{DEVICE_NAME} Boiler Pump", f"{BASE_TOPIC}/operating", "{{ value_json.boiler_pump_state|int }}", "", None, None),
-        "return_temp":       (f"{DEVICE_NAME} Return Temp", f"{BASE_TOPIC}/operating", "{{ value_json.return_temp|float }}", "°C", "temperature", "measurement"),
+        "smoke_temp":  (f"{DEVICE_NAME} Smoke Temp", f"{BASE_TOPIC}/status", "{{ value_json.smoke_temp|float }}", "°C", "temperature", "measurement"),
+        # neuer Text-Sensor für State
+        "state_txt":   (
+            f"{DEVICE_NAME} State",
+            f"{BASE_TOPIC}/status",
+            """
+            {% set s = value_json.state|int %}
+            {% set ss = value_json.substate|int %}
+            {% if s == 14 %}
+              {% if ss == 0 %}Aus
+              {% elif ss == 6 %}Aus eingeleitet
+              {% else %}Unbekannt (14/{{ ss }})
+              {% endif %}
+            {% elif s == 2 %}Zündung eingeleitet
+            {% elif s == 4 %}Zündung verlängert
+            {% elif s == 32 %}Betrieb, Ofen heizt an
+            {% elif s == 5 %}Betrieb, Normal
+            {% elif s == 0 %}Betrieb, Warten
+            {% else %}Unbekannt ({{ s }})
+            {% endif %}
+            """,
+            None, None, None
+        ),
+        "state":       (f"{DEVICE_NAME} StateNr",       f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",    None, None, None),
+        "substate":    (f"{DEVICE_NAME} SubstateNr",    f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}", None, None, None),
+        "state_sec":   (f"{DEVICE_NAME} State Sec",   f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}","s", None, "measurement"),
+        "power_pct":   (f"{DEVICE_NAME} Power Pct",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
     }
 
     for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():
