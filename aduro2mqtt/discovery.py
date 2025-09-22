@@ -126,7 +126,7 @@ def publish_climate(client):
         
         # Solltemp
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
-        "temperature_command_template": "{\"path\":\"boiler.ref\",\"value\": {{ value|float }} }",
+        "temperature_command_template": "{\"path\":\"boiler_ref\",\"value\": {{ value|float }} }",
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
         "temperature_state_template": "{{ value_json.boiler_ref|float }}",
 
