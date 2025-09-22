@@ -154,9 +154,17 @@ def publish_switch(client):
             "{\"path\":\"misc.stop\",\"value\":\"1\"}"
             "{% endif %}",
         "stat_t": f"{BASE_TOPIC}/status",
-        "val_tpl": "{{ 'ON' if (value_json.state_super|int) == 1 else 'OFF' }}",
+        "val_tpl": """
+            {% set s = value_json.state|int %}
+            {% set ss = value_json.substate|int %}
+            {% if s == 14 and ss in [0,6] %}
+              OFF
+            {% else %}
+              ON
+            {% endif %}
+        """,
         "icon": "mdi:radiator",
-        "opt": True
+        "opt": False   # nicht optimistisch, nur echte Rückmeldung zählt
     }
     publish_entity_short(client, "switch", "heating", payload)
 
