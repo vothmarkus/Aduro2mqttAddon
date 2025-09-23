@@ -81,66 +81,58 @@ def publish_entity_full(client, payload):
     print(f"[discovery] published climate -> {disc}")
 
 def publish_climate(client):
-    # Preset → Befehl
-    preset_cmd = (
-        "{% if value == 'Temperature' %}"
-        "{{\"path\":\"regulation.operation_mode\",\"value\":1}}"
+    # HVAC mode -> operation_mode (auto=1, heat=0)
+    mode_cmd_tpl = (
+        "{% if value == 'auto' %}"
+        "{{{\"path\":\"regulation.operation_mode\",\"value\":1}}}"
         "{% else %}"
-        "{{\"path\":\"regulation.fixed_power\",\"value\": (value|int) }}"
+        "{{{\"path\":\"regulation.operation_mode\",\"value\":0}}}"
         "{% endif %}"
     )
-    # Preset ← Status  (Punkt-Key via Index!)
-    preset_val = (
-        "{{ 'Temperature' if (value_json.operation_mode|int) == 1 "
-        "else ((value_json['regulation.fixed_power']|int) ~ '') }}"
+
+    # operation_mode -> HVAC mode
+    mode_state_tpl = (
+        "{{ 'auto' if (value_json.operation_mode|int) == 1 else 'heat' }}"
     )
 
     payload = {
         "name": DEVICE_NAME,
+        # nur die beiden Modi, kein on/off hier
+        "modes": ["auto", "heat"],
 
-        # gültige HVAC-Modes
-        "modes": ["off", "heat"],
+        # Mode steuern/lesen über settings.regulation.operation_mode
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
-        "mode_command_template":
-            "{% if value == 'off' %}{\"path\":\"misc.stop\",\"value\":\"1\"}"
-            "{% else %}{\"path\":\"misc.start\",\"value\":\"1\"}{% endif %}",
-        "mode_state_topic": f"{DEVICE_PREFIX}/status",
-        "mode_state_template": """
-            {% set s = value_json.state|int %}
-            {% set ss = value_json.substate|int %}
-            {% if s == 14 and ss in [0,6] %}
-              off
-            {% elif s in [2,4,32,5] %}
-              heat
-            {% else %}
-              off
-            {% endif %}
-        """,
+        "mode_command_template": mode_cmd_tpl,
+        "mode_state_topic": f"{DEVICE_PREFIX}/settings/regulation",
+        "mode_state_template": mode_state_tpl,
 
-        # ---- Presets (DOKU-konform) ----
-        #"preset_modes": ["Temperature","10","50","100"],
-        #"preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
-        #"preset_mode_command_template": preset_cmd,
-        #"preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
-        #"preset_mode_value_template": preset_val,
-        
-        # Solltemp
+        # Solltemperatur setzen -> boiler.temp (SETTINGS)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
-        "temperature_command_template": "{\"path\":\"boiler_ref\",\"value\": {{ value|float }} }",
+        "temperature_command_template": "{\"path\":\"boiler.temp\",\"value\": {{ value|float }} }",
+
+        # Solltemperatur-STATE aus OPERATING spiegeln (boiler_ref)
+        # (alternativ könntest du f"{DEVICE_PREFIX}/settings/boiler" + value_json.temp nehmen)
         "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
         "temperature_state_template": "{{ value_json.boiler_ref|float }}",
 
-        # Isttemp
+        # Ist-Temperatur: bevorzugt room_temp, sonst boiler_temp
         "current_temperature_topic": f"{DEVICE_PREFIX}/status",
         "current_temperature_template": "{{ (value_json.room_temp | default(value_json.boiler_temp)) | float }}",
 
         "temperature_unit": "C",
         "min_temp": 5,
         "max_temp": 35,
-        "temp_step": 1
+        "temp_step": 1,
+
+        "unique_id": "aduro_h2_climate",
+        "device": {
+            "identifiers": ["aduro_h2"],
+            "name": "Aduro H2",
+            "manufacturer": "Aduro",
+            "model": "via aduro2mqtt"
+        }
     }
     publish_entity_full(client, payload)
-
 
 # ---------- SWITCH (Heizbetrieb) ----------
 def publish_switch(client):
