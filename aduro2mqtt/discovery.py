@@ -94,9 +94,7 @@ def publish_climate(client):
 
     # operation_mode -> HVAC mode
     mode_state_tpl = """
-      {% set s = value_json.state|int %}
-      {% set ss = value_json.substate|int %}
-      {% if s == 14 and ss in [0,6] %}
+      {% if value_json.state|int == 14 %}
         off
       {% elif value_json.operation_mode|int == 1 %}
         auto
