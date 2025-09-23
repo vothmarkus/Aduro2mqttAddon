@@ -83,7 +83,9 @@ def publish_entity_full(client, payload):
 def publish_climate(client):
     # HVAC mode -> operation_mode (auto=1, heat=0)
     mode_cmd_tpl = """
-      {% if value == 'auto' %}
+      {% if value == 'off' %}
+        {"path":"misc.stop","value":"1"}
+      {% elif value == 'auto' %}
         {"path":"regulation.operation_mode","value":1}
       {% else %}
         {"path":"regulation.operation_mode","value":0}
@@ -91,13 +93,21 @@ def publish_climate(client):
     """
 
     # operation_mode -> HVAC mode
-    mode_state_tpl = (
-        "{{ 'auto' if (value_json.operation_mode|int) == 1 else 'heat' }}"
-    )
+    mode_state_tpl = """
+      {% set s = value_json.state|int %}
+      {% set ss = value_json.substate|int %}
+      {% if s == 14 and ss in [0,6] %}
+        off
+      {% elif value_json.operation_mode|int == 1 %}
+        auto
+      {% else %}
+        heat
+      {% endif %}
+    """
 
     payload = {
         "name": DEVICE_NAME,
-        "modes": ["auto", "heat"],
+        "modes": ["off", "auto", "heat"],
 
         # Mode steuern/lesen über settings.regulation.operation_mode
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
@@ -150,27 +160,6 @@ def publish_climate(client):
         "temp_step": 1,
 
         "unique_id": f"{DEVICE_ID}_climate",
-        "device": {
-            "identifiers": [DEVICE_ID],
-            "name": DEVICE_NAME,
-            "manufacturer": "Aduro",
-            "model": "via aduro2mqtt"
-        }
-    }
-    publish_entity_full(client, payload)
-
-def publish_climate_presets(client):
-    payload = {
-        "name": f"{DEVICE_NAME} Presets",
-        # HA braucht mindestens ein mode-Feld, sonst kein climate
-        "modes": ["heat"],
-        "mode_state_topic": f"{DEVICE_PREFIX}/dummy",
-        "mode_command_topic": f"{DEVICE_PREFIX}/dummy",
-
-        # jetzt kannst du Presets anhängen
-        "preset_modes": ["eco", "comfort", "boost"],
-
-        "unique_id": f"{DEVICE_ID}_climate_presets",
         "device": {
             "identifiers": [DEVICE_ID],
             "name": DEVICE_NAME,
