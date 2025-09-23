@@ -97,7 +97,6 @@ def publish_climate(client):
 
     payload = {
         "name": DEVICE_NAME,
-        # nur die beiden Modi, kein on/off hier
         "modes": ["auto", "heat"],
 
         # Mode steuern/lesen über settings.regulation.operation_mode
@@ -105,16 +104,41 @@ def publish_climate(client):
         "mode_command_template": mode_cmd_tpl,
         "mode_state_topic": f"{DEVICE_PREFIX}/settings/regulation",
         "mode_state_template": mode_state_tpl,
+        
+        
+        # ---- Presets (nur im Fixmodus relevant) ----
+#         "preset_modes": ["eco", "comfort", "boost"],
+#         "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
+#         "preset_mode_command_template": """
+#           {% if value == 'eco' %}
+#             {"path":"regulation.fixed_power","value":10}
+#           {% elif value == 'comfort' %}
+#             {"path":"regulation.fixed_power","value":50}
+#           {% elif value == 'boost' %}
+#             {"path":"regulation.fixed_power","value":100}
+#           {% endif %}
+#         """,
+#         "preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
+#         "preset_mode_value_template": """
+#           {% if (value_json['regulation.fixed_power']|int) == 10 %}
+#             eco
+#           {% elif (value_json['regulation.fixed_power']|int) == 50 %}
+#             comfort
+#           {% elif (value_json['regulation.fixed_power']|int) == 100 %}
+#             boost
+#           {% else %}
+#             none
+#           {% endif %}
+#         """,
+        
 
         # Solltemperatur setzen -> boiler.temp (SETTINGS)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
         "temperature_command_template": "{\"path\":\"boiler.temp\",\"value\": {{ value|float }} }",
 
-        # Solltemperatur-STATE aus OPERATING spiegeln (boiler_ref)
+        # Solltemperatur-STATE aus settings boiler
         "temperature_state_topic": f"{DEVICE_PREFIX}/settings/boiler",
-        #"temperature_state_topic": f"{DEVICE_PREFIX}/operating",
         "temperature_state_template": "{{ value_json.temp | float }}",
-        #"temperature_state_template": "{{ value_json.boiler_ref|float }}",
 
         # Ist-Temperatur: bevorzugt room_temp, sonst boiler_temp
         "current_temperature_topic": f"{DEVICE_PREFIX}/status",
@@ -125,10 +149,24 @@ def publish_climate(client):
         "max_temp": 35,
         "temp_step": 1,
 
-        "unique_id": "aduro_h2_climate",
+        "unique_id": f"{DEVICE_ID}_climate",
         "device": {
-            "identifiers": ["aduro_h2"],
-            "name": "Aduro H2",
+            "identifiers": [DEVICE_ID],
+            "name": DEVICE_NAME,
+            "manufacturer": "Aduro",
+            "model": "via aduro2mqtt"
+        }
+    }
+    publish_entity_full(client, payload)
+
+def publish_climate_presets(client):
+    payload = {
+        "name": f"{DEVICE_NAME} Presets",
+        "preset_modes": ["eco", "comfort", "boost"],
+        "unique_id": f"{DEVICE_ID}_climate_presets",
+        "device": {
+            "identifiers": [DEVICE_ID],
+            "name": DEVICE_NAME,
             "manufacturer": "Aduro",
             "model": "via aduro2mqtt"
         }
@@ -217,7 +255,7 @@ def publish_sensors(client):
         "state":       (f"{DEVICE_NAME} State Nr",       f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",    None, None, None),
         "substate":    (f"{DEVICE_NAME} Substate Nr",    f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}", None, None, None),
         "state_sec":   (f"{DEVICE_NAME} State Time",   f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}","s", None, "measurement"),
-        "power_pct":   (f"{DEVICE_NAME} Power",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
+        "power_pct":   (f"{DEVICE_NAME} Power Pct",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
     }
 
     for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():

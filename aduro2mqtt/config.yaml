@@ -1,5 +1,5 @@
 name: Aduro2MQTT
-version: 1.6.3
+version: 1.6.4
 slug: aduro2mqtt
 description: "MQTT bridge for Aduro H2 with Home Assistant Discovery."
 arch:
@@ -28,6 +28,7 @@ options:
     - state
     - substate
     - state_sec
+    - room_temp
   log_level: "INFO"
 schema:
   mqtt_host: str
