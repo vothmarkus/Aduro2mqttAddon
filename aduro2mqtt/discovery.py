@@ -82,13 +82,13 @@ def publish_entity_full(client, payload):
 
 def publish_climate(client):
     # HVAC mode -> operation_mode (auto=1, heat=0)
-    mode_cmd_tpl = (
-        "{% if value == 'auto' %}"
-        "{{{\"path\":\"regulation.operation_mode\",\"value\":1}}}"
-        "{% else %}"
-        "{{{\"path\":\"regulation.operation_mode\",\"value\":0}}}"
-        "{% endif %}"
-    )
+    mode_cmd_tpl = """
+      {% if value == 'auto' %}
+        {"path":"regulation.operation_mode","value":1}
+      {% else %}
+        {"path":"regulation.operation_mode","value":0}
+      {% endif %}
+    """
 
     # operation_mode -> HVAC mode
     mode_state_tpl = (
