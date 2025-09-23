@@ -29,19 +29,21 @@ echo "[INFO] MQTT: host=${MQTT_HOST}, port=${MQTT_PORT}, user=${MQTT_USER:-<none
 echo "[INFO] Discovery: ${DISCOVERY_ENABLE} (prefix=${DISCOVERY_PREFIX}, device=${DEVICE_NAME}/${DEVICE_ID}, exclude=${DISCOVERY_EXCLUDE})"
 echo "[INFO] Starte aduro2mqtt: MQTT @ ${MQTT_HOST}:${MQTT_PORT}, Aduro @ ${ADURO_HOST}, Poll=${ADURO_POLL_INTERVAL}s"
 
+# ---- Export für Upstream + Sidecar ----
 export MQTT_HOST MQTT_PORT MQTT_USER MQTT_PASSWORD MQTT_BASE_TOPIC MQTT_CLIENT_ID
 export ADURO_HOST ADURO_SERIAL ADURO_PIN ADURO_POLL_INTERVAL
 export LOG_LEVEL
 export DISCOVERY_PREFIX BASE_TOPIC="${MQTT_BASE_TOPIC}" DEVICE_NAME DEVICE_ID DISCOVERY_EXCLUDE
 export PYTHONWARNINGS="ignore::ResourceWarning"
 
-# Map to upstream expected env names
+# Upstream-kompatible Variablen
 export MQTT_BROKER_HOST="${MQTT_HOST}"
 export MQTT_BROKER_PORT="${MQTT_PORT}"
 export MQTT_BROKER_USERNAME="${MQTT_USER}"
 export MQTT_BROKER_PASSWORD="${MQTT_PASSWORD}"
 export MQTT_BROKER_CLIENT_ID="${MQTT_CLIENT_ID}"
 
+# Optional: Discovery
 if [ "${DISCOVERY_ENABLE}" = "true" ] || [ "${DISCOVERY_ENABLE}" = "True" ]; then
   /opt/venv/bin/python /opt/discovery.py || echo "[WARN] Discovery failed (continuing)"
 fi
@@ -49,13 +51,36 @@ fi
 BACKOFF=5
 MAX_BACKOFF=60
 
+# Sauberes Beenden beider Prozesse
+term_handler() {
+  [ -n "${MAIN_PID-}" ] && kill -TERM "${MAIN_PID}" >/dev/null 2>&1 || true
+  [ -n "${REF_PID-}" ]  && kill -TERM "${REF_PID}"  >/dev/null 2>&1 || true
+}
+trap term_handler TERM INT
+
+# ---- Haupt-Loop: Upstream + Sidecar starten, auf Upstream warten, Sidecar mitnehmen ----
 while true; do
-  /opt/venv/bin/python /opt/aduro2mqtt/main.py || true
+  echo "[INFO] launching upstream aduro2mqtt ..."
+  /opt/venv/bin/python /opt/aduro2mqtt/main.py &
+  MAIN_PID=$!
+
+  echo "[INFO] launching refresh-on-set sidecar ..."
+  /opt/venv/bin/python /opt/refresh_on_set.py &
+  REF_PID=$!
+
+  # Warten bis Upstream-Prozess endet
+  wait "${MAIN_PID}"
   RC=$?
-  if [ $RC -eq 0 ]; then
+
+  # Sidecar beenden, bevor wir evtl. neu starten
+  kill -TERM "${REF_PID}" >/dev/null 2>&1 || true
+  wait "${REF_PID}" 2>/dev/null || true
+
+  if [ ${RC} -eq 0 ]; then
     echo "[INFO] aduro2mqtt exited cleanly."
     exit 0
   fi
+
   echo "[ERROR] aduro2mqtt exited with code ${RC}. Restart in ${BACKOFF}s..."
   sleep "${BACKOFF}"
   BACKOFF=$(( BACKOFF < MAX_BACKOFF ? BACKOFF * 2 : MAX_BACKOFF ))
