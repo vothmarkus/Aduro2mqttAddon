@@ -83,9 +83,7 @@ def publish_entity_full(client, payload):
 def publish_climate(client):
     # HVAC mode -> operation_mode (auto=1, heat=0)
     mode_cmd_tpl = """
-      {% if value == 'off' %}
-        {"path":"misc.stop","value":"1"}
-      {% elif value == 'auto' %}
+      {% if value == 'auto' %}
         {"path":"regulation.operation_mode","value":1}
       {% else %}
         {"path":"regulation.operation_mode","value":0}
@@ -93,19 +91,13 @@ def publish_climate(client):
     """
 
     # operation_mode -> HVAC mode
-    mode_state_tpl = """
-      {% if value_json.state|int == 14 %}
-        off
-      {% elif value_json.operation_mode|int == 1 %}
-        auto
-      {% else %}
-        heat
-      {% endif %}
-    """
+    mode_state_tpl = (
+        "{{ 'auto' if (value_json.operation_mode|int) == 1 else 'heat' }}"
+    )
 
     payload = {
         "name": DEVICE_NAME,
-        "modes": ["off", "auto", "heat"],
+        "modes": ["auto", "heat"],
 
         # Mode steuern/lesen über settings.regulation.operation_mode
         "mode_command_topic": f"{DEVICE_PREFIX}/set",
