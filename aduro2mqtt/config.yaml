@@ -19,7 +19,7 @@ options:
   aduro_host: ""
   aduro_serial: ""
   aduro_pin: ""
-  aduro_poll_interval: 15
+  aduro_poll_interval: 30
   discovery_enable: true
   discovery_prefix: "homeassistant"
   device_name: "Aduro H2"
