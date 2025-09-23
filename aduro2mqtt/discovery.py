@@ -162,7 +162,14 @@ def publish_climate(client):
 def publish_climate_presets(client):
     payload = {
         "name": f"{DEVICE_NAME} Presets",
+        # HA braucht mindestens ein mode-Feld, sonst kein climate
+        "modes": ["heat"],
+        "mode_state_topic": f"{DEVICE_PREFIX}/dummy",
+        "mode_command_topic": f"{DEVICE_PREFIX}/dummy",
+
+        # jetzt kannst du Presets anhängen
         "preset_modes": ["eco", "comfort", "boost"],
+
         "unique_id": f"{DEVICE_ID}_climate_presets",
         "device": {
             "identifiers": [DEVICE_ID],
