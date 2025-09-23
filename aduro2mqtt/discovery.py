@@ -111,9 +111,10 @@ def publish_climate(client):
         "temperature_command_template": "{\"path\":\"boiler.temp\",\"value\": {{ value|float }} }",
 
         # Solltemperatur-STATE aus OPERATING spiegeln (boiler_ref)
-        # (alternativ könntest du f"{DEVICE_PREFIX}/settings/boiler" + value_json.temp nehmen)
-        "temperature_state_topic": f"{DEVICE_PREFIX}/operating",
-        "temperature_state_template": "{{ value_json.boiler_ref|float }}",
+        "temperature_state_topic": f"{DEVICE_PREFIX}/settings/boiler",
+        #"temperature_state_topic": f"{DEVICE_PREFIX}/operating",
+        "temperature_state_template": "{{ value_json.temp | float }}",
+        #"temperature_state_template": "{{ value_json.boiler_ref|float }}",
 
         # Ist-Temperatur: bevorzugt room_temp, sonst boiler_temp
         "current_temperature_topic": f"{DEVICE_PREFIX}/status",
