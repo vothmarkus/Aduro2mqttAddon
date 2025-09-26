@@ -75,9 +75,9 @@ mqtt_user: aduro
 mqtt_password: !secret mqtt_aduro_password
 mqtt_base_topic: aduro2mqtt
 
-aduro_host: 192.168.177.74
-aduro_serial: "84956"
-aduro_pin: "4438539130"
+aduro_host: 192.168.0.2
+aduro_serial: "123456"
+aduro_pin: "1234567890"
 aduro_poll_interval: 30
 
 discovery_enable: true
