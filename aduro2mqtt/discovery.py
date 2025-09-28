@@ -173,8 +173,7 @@ def publish_switch(client):
         "stat_t": f"{BASE_TOPIC}/status",
         "val_tpl": """
             {% set s = value_json.state|int %}
-            {% set ss = value_json.substate|int %}
-            {% if s == 14 and ss in [0,6] %}
+            {% if s == 13 or s == 14 or s == 20 or s == 28 %}
               OFF
             {% else %}
               ON
