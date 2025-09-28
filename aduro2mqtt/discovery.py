@@ -234,6 +234,7 @@ def publish_sensors(client):
             {% elif s == 0 %}Betrieb, Warten
             {% elif s == 6 %}Betrieb, Temperatur erreicht
             {% elif s == 9 %}Angehalten, Holzverbrennung
+            {% elif s == 20 %}Angehalten, Heizleistung gering
             {% elif s == 28 %}28???
             {% else %}Unbekannt ({{ s }})
             {% endif %}
