@@ -236,6 +236,7 @@ def publish_sensors(client):
             {% elif s == 20 %}Angehalten, Flamme erloschen
             {% elif s == 13 %}Angehalten, Zündung fehlgeschlagen
             {% elif s == 28 %}Tür offen
+            {% elif s == 24 %}Pallet Luftzufuhrhebel geschlossen
             {% else %}Unbekannt ({{ s }})
             {% endif %}
             """,
