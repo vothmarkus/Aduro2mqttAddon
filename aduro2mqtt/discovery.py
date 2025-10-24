@@ -42,45 +42,34 @@ def publish_entity_short(client, kind, object_id, payload):
     payload["uniq_id"] = f"{DEVICE_ID}_{object_id}"
     payload["dev"] = device_payload_short()
     client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
+    print(f"[discovery] published {kind}:{object_id} -> {full}")
 
-def publish_entity_full(client, payload):
-    full = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}/config"
-    payload["uniq_id"] = f"{DEVICE_ID}_climate"
-    payload["device"] = device_payload_full()
-    client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
-
-# ---------- CLIMATE ----------
-def publish_entity_full(client, payload):
-    # Climate bewusst unter .../climate/aduro_h2_climate/config veröffentlichen
-    full = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}_climate/config"
-    payload["uniq_id"] = f"{DEVICE_ID}_climate"
-    payload["device"] = {
-        "identifiers": [DEVICE_ID],
-        "name": DEVICE_NAME,
-        "manufacturer": "Aduro",
-        "model": "via aduro2mqtt",
-    }
-    client.publish(full, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
-    print(f"[discovery] published climate -> {full}")
-
+# ---------- CLIMATE (einzige Full-Publisher-Funktion) ----------
 def publish_entity_full(client, payload):
     # Climate bewusst unter .../climate/<DEVICE_ID>_climate/config veröffentlichen
     disc = f"{DISCOVERY_PREFIX}/climate/{DEVICE_ID}_climate/config"
-    # volle Device-Infos
     device_full = {
         "identifiers": [DEVICE_ID],
         "name": DEVICE_NAME,
         "manufacturer": "Aduro",
         "model": "via aduro2mqtt",
     }
-    # IDs doppelt setzen (kompatibel zu allen HA-Versionen)
+    # IDs doppelt setzen (Kompatibilität)
     payload["unique_id"] = f"{DEVICE_ID}_climate"
     payload["uniq_id"]   = f"{DEVICE_ID}_climate"
     payload["device"]    = device_full
     client.publish(disc, json.dumps(payload, ensure_ascii=False, separators=(",",":")), qos=1, retain=True)
     print(f"[discovery] published climate -> {disc}")
 
+# ---------- CLIMATE ----------
 def publish_climate(client):
+    """
+    Climate:
+    - Modi 'auto' und 'heat' sind weiterhin umschaltbar (command/state über operation_mode).
+    - 'off' wird NICHT als Modus angeboten, sondern nur ANZEIGEND über hvac_action.
+      -> action_template: power_pct == 0 => 'off', sonst 'heating' (Fallback über state-Codes).
+    """
+
     # HVAC mode -> operation_mode (auto=1, heat=0)
     mode_cmd_tpl = """
       {% if value == 'auto' %}
@@ -88,15 +77,25 @@ def publish_climate(client):
       {% else %}
         {"path":"regulation.operation_mode","value":0}
       {% endif %}
-    """
+    """.strip()
 
-    # operation_mode -> HVAC mode
-    mode_state_tpl = (
-        "{{ 'auto' if (value_json.operation_mode|int) == 1 else 'heat' }}"
-    )
+    # operation_mode -> HVAC mode (anzeigend, aber schaltbar via command_topic)
+    mode_state_tpl = "{{ 'auto' if (value_json.operation_mode|int) == 1 else 'heat' }}"
+
+    # hvac_action aus Leistung (read-only "off" Anzeige), Fallback auf state-Codes
+    action_tpl = """
+{% if value_json.power_pct is defined %}
+  {{ 'off' if (value_json.power_pct|float(0)) == 0 else 'heating' }}
+{% else %}
+  {% set s = value_json.state|int(-1) %}
+  {{ 'off' if s in [13,14,20,28] else 'heating' }}
+{% endif %}
+""".strip()
 
     payload = {
         "name": DEVICE_NAME,
+
+        # Modi explizit NUR auto/heat -> umschaltbar via command_topic
         "modes": ["auto", "heat"],
 
         # Mode steuern/lesen über settings.regulation.operation_mode
@@ -104,33 +103,10 @@ def publish_climate(client):
         "mode_command_template": mode_cmd_tpl,
         "mode_state_topic": f"{DEVICE_PREFIX}/settings/regulation",
         "mode_state_template": mode_state_tpl,
-        
-        
-        # ---- Presets (nur im Fixmodus relevant) ----
-#         "preset_modes": ["eco", "comfort", "boost"],
-#         "preset_mode_command_topic": f"{DEVICE_PREFIX}/set",
-#         "preset_mode_command_template": """
-#           {% if value == 'eco' %}
-#             {"path":"regulation.fixed_power","value":10}
-#           {% elif value == 'comfort' %}
-#             {"path":"regulation.fixed_power","value":50}
-#           {% elif value == 'boost' %}
-#             {"path":"regulation.fixed_power","value":100}
-#           {% endif %}
-#         """,
-#         "preset_mode_state_topic": f"{DEVICE_PREFIX}/status",
-#         "preset_mode_value_template": """
-#           {% if (value_json['regulation.fixed_power']|int) == 10 %}
-#             eco
-#           {% elif (value_json['regulation.fixed_power']|int) == 50 %}
-#             comfort
-#           {% elif (value_json['regulation.fixed_power']|int) == 100 %}
-#             boost
-#           {% else %}
-#             none
-#           {% endif %}
-#         """,
-        
+
+        # Nur Anzeige der Aktivität: 'off' wenn power_pct==0, sonst 'heating'
+        "action_topic": f"{DEVICE_PREFIX}/status",
+        "action_template": action_tpl,
 
         # Solltemperatur setzen -> boiler.temp (SETTINGS)
         "temperature_command_topic": f"{DEVICE_PREFIX}/set",
@@ -149,6 +125,7 @@ def publish_climate(client):
         "max_temp": 35,
         "temp_step": 1,
 
+        # unique_id + device werden in publish_entity_full gesetzt/überschrieben
         "unique_id": f"{DEVICE_ID}_climate",
         "device": {
             "identifiers": [DEVICE_ID],
@@ -157,6 +134,7 @@ def publish_climate(client):
             "model": "via aduro2mqtt"
         }
     }
+
     publish_entity_full(client, payload)
 
 # ---------- SWITCH (Heizbetrieb) ----------
@@ -244,8 +222,8 @@ def publish_sensors(client):
         ),
         "state":       (f"{DEVICE_NAME} State Nr",       f"{BASE_TOPIC}/status", "{{ value_json.state|int }}",    None, None, None),
         "substate":    (f"{DEVICE_NAME} Substate Nr",    f"{BASE_TOPIC}/status", "{{ value_json.substate|int }}", None, None, None),
-        "state_sec":   (f"{DEVICE_NAME} State Time",   f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}","s", None, "measurement"),
-        "power_pct":   (f"{DEVICE_NAME} Power Pct",   f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
+        "state_sec":   (f"{DEVICE_NAME} State Time",     f"{BASE_TOPIC}/status", "{{ value_json.state_sec|int }}","s", None, "measurement"),
+        "power_pct":   (f"{DEVICE_NAME} Power Pct",      f"{BASE_TOPIC}/status", "{{ value_json.power_pct|float }}","%", None, "measurement"),
     }
 
     for key, (name, stat_t, val_tpl, unit, dev_cla, stat_cla) in sensors.items():
