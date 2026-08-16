@@ -1,0 +1,101 @@
+{
+  "title": "Aduro",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect an Aduro stove",
+        "description": "The stove must be reachable from Home Assistant over the local network. Stop the legacy Aduro2MQTT add-on before continuing because both use UDP port 1901.",
+        "data": {
+          "name": "Device name",
+          "host": "Host or IP address",
+          "serial": "Serial number",
+          "pin": "PIN",
+          "scan_interval": "Polling interval"
+        },
+        "data_description": {
+          "name": "Name shown for the device in Home Assistant.",
+          "host": "Local IP address or resolvable host name of the stove.",
+          "serial": "Controller serial number used by the Aduro app.",
+          "pin": "Controller PIN used by the Aduro app.",
+          "scan_interval": "Seconds between updates (10–300)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the stove.",
+      "invalid_auth": "The stove rejected the serial number or PIN.",
+      "unknown": "Unexpected error. Check the Home Assistant log."
+    },
+    "abort": {
+      "already_configured": "This stove is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Aduro settings",
+        "description": "Changing these settings validates the connection before the integration is reloaded.",
+        "data": {
+          "host": "Host or IP address",
+          "pin": "PIN",
+          "scan_interval": "Polling interval"
+        },
+        "data_description": {
+          "host": "Local IP address or resolvable host name of the stove.",
+          "pin": "Controller PIN used by the Aduro app.",
+          "scan_interval": "Seconds between updates (10–300)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the stove.",
+      "invalid_auth": "The stove rejected the serial number or PIN.",
+      "unknown": "Unexpected error. Check the Home Assistant log."
+    }
+  },
+  "entity": {
+    "number": {
+      "force_auger": {
+        "name": "Force auger run time"
+      }
+    },
+    "select": {
+      "fixed_power": {
+        "name": "Fixed power"
+      }
+    },
+    "sensor": {
+      "room_temperature": {
+        "name": "Room temperature"
+      },
+      "smoke_temperature": {
+        "name": "Smoke temperature"
+      },
+      "operating_state": {
+        "name": "State"
+      },
+      "state_code": {
+        "name": "State number"
+      },
+      "substate_code": {
+        "name": "Substate number"
+      },
+      "state_duration": {
+        "name": "State time"
+      },
+      "power_percentage": {
+        "name": "Power"
+      }
+    },
+    "switch": {
+      "heating": {
+        "name": "Heating"
+      }
+    }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "The Aduro command for {path} failed."
+    }
+  }
+}

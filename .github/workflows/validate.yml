@@ -1,0 +1,54 @@
+name: Validate native integration
+
+on:
+  push:
+    branches:
+      - main
+      - "draft/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # HACS reads repository metadata (topics and license) from the default
+          # branch. Validate those checks after merge, when LICENSE is on main.
+          ignore: ${{ github.ref != 'refs/heads/main' && 'topics license' || '' }}
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  python:
+    name: Python checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install test dependencies
+        run: >-
+          python -m pip install
+          pyduro==3.2.1
+          pytest-homeassistant-custom-component
+          ruff
+      - name: Lint
+        run: ruff check custom_components tests
+      - name: Format check
+        run: ruff format --check custom_components tests
+      - name: Unit tests
+        run: pytest -q
+      - name: Compile
+        run: python -m compileall -q custom_components/aduro
