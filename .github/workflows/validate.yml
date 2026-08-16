@@ -19,6 +19,9 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # HACS reads repository metadata (topics and license) from the default
+          # branch. Validate those checks after merge, when LICENSE is on main.
+          ignore: ${{ github.ref != 'refs/heads/main' && 'topics license' || '' }}
 
   hassfest:
     name: Hassfest
