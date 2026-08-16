@@ -1,122 +1,85 @@
-# Aduro2mqttAddon
-<img src="aduro2mqtt/logo.svg" alt="Projektlogo" width="150"/>
+# Aduro – native Home-Assistant-Integration
 
-- 🇬🇧 **English**: [README.en.md](README.en.md)
+<img src="custom_components/aduro/brand/logo.png" alt="Aduro-Projektlogo" width="150"/>
 
+- 🇬🇧 **English:** [README.en.md](README.en.md)
 
-Bridgt deinen **Aduro H2** (bzw. kompatible Aduro-Kessel) nach **MQTT** und legt die wichtigsten Entitäten in Home Assistant **automatisch** per MQTT Discovery an.
+Diese Integration bindet einen **Aduro H2** beziehungsweise einen kompatiblen
+NBE-Controller direkt in Home Assistant ein. Sie ersetzt die bisherige
+Aduro2MQTT-Bridge: Es werden weder ein MQTT-Broker noch ein Add-on oder
+MQTT-Discovery benötigt.
 
-## Basis / Credits
-Dieses Add-on verpackt und automatisiert das Upstream-Projekt:
-- Upstream: `Johnny100dk/aduro2mqtt` (MQTT-Bridge & Logik)  
-- Inspiration/Fork-Historie: `freol35241/aduro2mqtt`
+## Funktionsumfang
 
-## Idee
-- **Add-on** statt eigenem Docker-Setup: 1-Klick-Installation direkt im HA Add-on Store.  
-- **Auto-Erkennung (MQTT Discovery)**: Sensoren, Schalter & Selects werden als Geräte/Entitäten in der **MQTT-Integration** automatisch angelegt (und bei Bedarf aufgeräumt).
+Alle bisher in Home Assistant bereitgestellten Funktionen bleiben erhalten:
 
----
+| Funktion | Native Home-Assistant-Entität |
+|---|---|
+| Soll- und Isttemperatur | Climate |
+| Automatik- und Festleistungsbetrieb | Climate-Modus |
+| Heizbetrieb starten/stoppen | Switch |
+| Feste Leistung 10/50/100 % | Select |
+| Förderschnecke 0–120 Sekunden | Number |
+| Rauchgas- und Raumtemperatur | Sensor |
+| Betriebszustand und Zustandsnummern | Sensor |
+| Zustandsdauer und aktuelle Leistung | Sensor |
 
-## Voraussetzungen
-- Home Assistant (Supervised/OS)
-- **MQTT-Broker** (empfohlen: **Mosquitto** Add-on)
-- Netzwerkzugriff zum Aduro-Ofen (IP), Seriennummer & PIN
+Die im bisherigen Add-on standardmäßig ausgeblendeten Rohsensoren
+**Raumtemperatur**, **Statusnummer**, **Unterstatusnummer** und **Statusdauer**
+werden weiterhin angelegt, sind aber zunächst deaktiviert. Sie lassen sich in
+Home Assistant unter **Gerät → Entitäten** einschalten.
 
----
+Nach jedem Schreibbefehl wartet die Integration wie bisher 0,6 Sekunden und
+liest anschließend sofort neue Werte ein. Reguläres Polling erfolgt
+standardmäßig alle 30 Sekunden.
 
-## Installation (Schritt für Schritt)
+## Installation über HACS
 
-1) **MQTT-Broker installieren**  
-   - Add-on Store → **Mosquitto broker** installieren & starten.  
-   - In **Einstellungen → Geräte & Dienste → MQTT** sicherstellen, dass die Integration eingerichtet ist (Discovery aktiv).
+1. Dieses Repository in HACS als benutzerdefiniertes Repository der Kategorie
+   **Integration** hinzufügen.
+2. **Aduro** installieren.
+3. Home Assistant neu starten.
+4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Aduro** öffnen.
+5. Gerätename, lokale IP/Hostname, Seriennummer und PIN eintragen.
 
-2) **Add-on Repository hinzufügen**  
-   - Add-on Store → oben rechts **⋮ → Repositories** → dein Aduro2MQTT-Repository hinzufügen.  
-   - Danach erscheint **Aduro2MQTT** im Store.
+Die Verbindung wird bereits während der Einrichtung geprüft. IP-Adresse, PIN
+und Abfrageintervall können anschließend über **Konfigurieren** geändert
+werden.
 
-3) **MQTT-Benutzer anlegen (empfohlen)**  
-   - Einstellungen → Personen & Zonen → **Benutzer** → neuen Benutzer anlegen (z. B. `aduro`) mit **starkem Passwort**.  
-   - In Mosquitto (falls nötig) die Anmeldedaten freigeben (Standard-HA-Setup übernimmt das).
+## Wechsel vom bisherigen Add-on
 
-4) **Aduro2MQTT Add-on installieren & konfigurieren**  
-   - Add-on öffnen → **Konfiguration**:
-     - **MQTT**
-       - `mqtt_host`: `core-mosquitto` (bei Mosquitto-Add-on) oder IP/Host deines Brokers  
-       - `mqtt_port`: `1883`  
-       - `mqtt_client_id`: z. B. `aduro2mqtt`  
-       - `mqtt_user` / `mqtt_password`: **der eben angelegte Benutzer**
-       - `mqtt_base_topic`: `aduro2mqtt` (Standard)
-     - **Aduro**
-       - `aduro_host`: IP deines Ofens (z. B. `192.168.x.y`)  
-       - `aduro_serial`: Seriennummer  
-       - `aduro_pin`: PIN  
-       - `aduro_poll_interval`: z. B. `30` Sekunden
-     - **Discovery (optional)**
-       - `discovery_enable`: `true`  
-       - `discovery_prefix`: `homeassistant`  
-       - `device_name`: `Aduro H2`  
-       - `device_id`: `aduro_h2`  
-       - `discovery_exclude`: Liste von Keys, die **nicht** veröffentlicht werden sollen (z. B. `boiler_pump_state`, `return_temp`)
-   - **Speichern** → **Starten**.
+> Das Aduro2MQTT-Add-on vor der Einrichtung der nativen Integration stoppen.
 
-5) **Geräte/Entitäten erscheinen automatisch**  
-   - Home Assistant → **Einstellungen → Geräte & Dienste → MQTT**  
-   - Dort sollte ein **Gerät „Aduro H2“** mit Sensoren/Entitäten auftauchen (Temperaturen, Leistung, Exhaust Speed, CO, …).  
-   - Ein **Schalter** („Aduro H2 Toggle“) und **Select** („Fixed power (%)“) werden ebenfalls per Discovery bereitgestellt.
+PyDuro bindet seine UDP-Anfragen an den lokalen Port 1901. Add-on und native
+Integration dürfen deshalb nicht gleichzeitig laufen.
 
----
+Empfohlene Reihenfolge:
 
-## Beispiel-Konfiguration (Add-on → „Konfiguration“)
-```yaml
-mqtt_host: core-mosquitto
-mqtt_port: 1883
-mqtt_client_id: aduro2mqtt
-mqtt_user: aduro
-mqtt_password: !secret mqtt_aduro_password
-mqtt_base_topic: aduro2mqtt
+1. Namen und Automationen der bisherigen MQTT-Entitäten notieren.
+2. Aduro2MQTT-Add-on stoppen, aber zunächst nicht löschen.
+3. Native Aduro-Integration einrichten und alle Werte prüfen.
+4. Automationen auf die neuen nativen Entitäten umstellen.
+5. Alte MQTT-Discovery-Entitäten und anschließend das Add-on entfernen.
 
-aduro_host: 192.168.0.2
-aduro_serial: "123456"
-aduro_pin: "1234567890"
-aduro_poll_interval: 30
+## Technischer Aufbau
 
-discovery_enable: true
-discovery_prefix: homeassistant
-device_name: Aduro H2
-device_id: aduro_h2
-discovery_exclude:
-  - boiler_pump_state
-  - return_temp
+- lokale Kommunikation direkt über das NBE-UDP-Protokoll
+- PyDuro 3.2.1 als Protokollbibliothek
+- zentraler DataUpdateCoordinator
+- sämtliche UDP-Zugriffe prozessweit serialisiert, da PyDuro Port 1901 nutzt
+- UI-basierte Einrichtung und Optionsverwaltung
+- Geräte- und Entitäts-Registry mit stabilen IDs auf Basis der Seriennummer
+- automatische Offline-Erkennung und Wiederaufnahme des Pollings
 
-log_level: INFO
-```
+## Unterstützte Geräte
 
----
+Entwickelt und getestet für den Aduro H2. Weitere Aduro-Hybridöfen mit
+kompatiblem NBE-Controller können funktionieren, sofern sie die verwendeten
+Status- und Einstellungsgruppen bereitstellen.
 
-## Was wird angelegt?
-- **Sensoren** (Auswahl):  
-  - `Room Temp`, `Shaft Temp`, `Smoke Temp`, `Oxygen`, `Power Pct`, `Exhaust Speed`, `CO (ppm)`, `Total Hours`  
-- **Schalter**:  
-  - „Aduro H2 Toggle“ (Start/Stop)  
-- **Select**:  
-  - „Fixed power (%)“ (10/50/100)
+## Lizenz und Credits
 
-> Hinweis: Die Menge der Sensoren ist bewusst kuratiert. Über `discovery_exclude` kannst du einzelne Keys ausblenden.
-
----
-
-## Tipps & Troubleshooting
-- **Keine Geräte sichtbar?**  
-  - MQTT-Integration in HA aktiv?  
-  - Broker-Login korrekt (`mqtt_user`/`mqtt_password`)?  
-  - In den Add-on-Logs sollte „publish …/config“ auftauchen.
-- **CO-Wert ist 0?**  
-  - Der Ofen liefert teils `0` im Idle. Während des Betriebs prüfen.  
-- **Aduro antwortet nicht?**  
-  - IP/Netzwerk prüfen, Seriennummer+PIN korrekt, Poll-Intervall ggf. auf 60 s erhöhen.
-
----
-
-## Lizenz & Danksagung
-- Dieses Add-on bündelt die Arbeit von `Johnny100dk/aduro2mqtt` (Lizenz des Upstreams beachten).  
-- Danke an die Community-Forks (u. a. `freol35241`) für Ideen & Beispiele.
+Apache License 2.0. Die Integration übernimmt das bewährte Verhalten von
+[Johnny100dk/aduro2mqtt](https://github.com/Johnny100dk/aduro2mqtt) und nutzt
+[PyDuro](https://github.com/clementprevot/pyduro) als externe MIT-lizenzierte
+Abhängigkeit. Einzelheiten stehen in [NOTICE](NOTICE).

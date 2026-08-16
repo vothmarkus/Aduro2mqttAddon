@@ -1,0 +1,11 @@
+Aduro native Home Assistant integration
+Copyright 2026 Markus Voth
+
+The native integration is based on the behavior of aduro2mqtt by Johnny100dk
+and contributors, licensed under the Apache License 2.0:
+https://github.com/Johnny100dk/aduro2mqtt
+
+It depends on PyDuro by Clément Prévot, licensed under the MIT License. PyDuro
+is installed as an external Python dependency and is not bundled in this
+repository:
+https://github.com/clementprevot/pyduro

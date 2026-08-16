@@ -1,0 +1,101 @@
+{
+  "title": "Aduro",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Aduro-Ofen verbinden",
+        "description": "Der Ofen muss aus dem lokalen Netzwerk von Home Assistant erreichbar sein. Stoppe vor dem Fortfahren das bisherige Aduro2MQTT-Add-on, da beide UDP-Port 1901 verwenden.",
+        "data": {
+          "name": "Gerätename",
+          "host": "Host oder IP-Adresse",
+          "serial": "Seriennummer",
+          "pin": "PIN",
+          "scan_interval": "Abfrageintervall"
+        },
+        "data_description": {
+          "name": "Name des Geräts in Home Assistant.",
+          "host": "Lokale IP-Adresse oder auflösbarer Hostname des Ofens.",
+          "serial": "Seriennummer des Controllers aus der Aduro-App.",
+          "pin": "Controller-PIN aus der Aduro-App.",
+          "scan_interval": "Sekunden zwischen zwei Aktualisierungen (10–300)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Ofen fehlgeschlagen.",
+      "invalid_auth": "Der Ofen hat Seriennummer oder PIN abgelehnt.",
+      "unknown": "Unerwarteter Fehler. Prüfe das Home-Assistant-Protokoll."
+    },
+    "abort": {
+      "already_configured": "Dieser Ofen ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Aduro-Einstellungen",
+        "description": "Änderungen werden vor dem Neuladen der Integration durch einen Verbindungstest geprüft.",
+        "data": {
+          "host": "Host oder IP-Adresse",
+          "pin": "PIN",
+          "scan_interval": "Abfrageintervall"
+        },
+        "data_description": {
+          "host": "Lokale IP-Adresse oder auflösbarer Hostname des Ofens.",
+          "pin": "Controller-PIN aus der Aduro-App.",
+          "scan_interval": "Sekunden zwischen zwei Aktualisierungen (10–300)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Ofen fehlgeschlagen.",
+      "invalid_auth": "Der Ofen hat Seriennummer oder PIN abgelehnt.",
+      "unknown": "Unerwarteter Fehler. Prüfe das Home-Assistant-Protokoll."
+    }
+  },
+  "entity": {
+    "number": {
+      "force_auger": {
+        "name": "Erzwungene Förderschneckenlaufzeit"
+      }
+    },
+    "select": {
+      "fixed_power": {
+        "name": "Feste Leistung"
+      }
+    },
+    "sensor": {
+      "room_temperature": {
+        "name": "Raumtemperatur"
+      },
+      "smoke_temperature": {
+        "name": "Rauchgastemperatur"
+      },
+      "operating_state": {
+        "name": "Status"
+      },
+      "state_code": {
+        "name": "Statusnummer"
+      },
+      "substate_code": {
+        "name": "Unterstatusnummer"
+      },
+      "state_duration": {
+        "name": "Statusdauer"
+      },
+      "power_percentage": {
+        "name": "Leistung"
+      }
+    },
+    "switch": {
+      "heating": {
+        "name": "Heizbetrieb"
+      }
+    }
+  },
+  "exceptions": {
+    "command_failed": {
+      "message": "Der Aduro-Befehl für {path} ist fehlgeschlagen."
+    }
+  }
+}
